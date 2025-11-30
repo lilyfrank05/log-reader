@@ -10,7 +10,7 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
     volumes:
-      - uploads:/app/uploads
+      - ./uploads:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001').read()"]
       interval: 30s
