@@ -63,7 +63,6 @@ The workflow:
 - Tags images with version from VERSION file
 - Tags images as `latest` on default branch
 - Uses build cache for faster builds
-- Generates artifact attestation for security
 
 To use automated builds:
 1. Push code to `main` or `master` branch
@@ -178,7 +177,6 @@ The application uses:
 - **Read-only Filesystem**: Only `/app/uploads` is writable
 - **Health Checks**: Container includes health check endpoint for monitoring
 - **Multi-architecture**: Supports both AMD64 and ARM64 platforms
-- **Artifact Attestation**: GitHub Actions generates build provenance for supply chain security
 
 ## License
 
