@@ -175,18 +175,32 @@ def apply_filter(line, filter_config):
 def apply_filters(line, filters, logic='AND'):
     """
     Apply multiple filters with specified logic.
+    Date filters always use AND logic.
+    Include/exclude filters use the specified logic (AND/OR).
+
     filters: list of filter configs
-    logic: 'AND' | 'OR'
+    logic: 'AND' | 'OR' - applies only to include/exclude filters
     """
     if not filters:
         return True
 
-    results = [apply_filter(line, f) for f in filters]
+    # Separate date filters from include/exclude filters
+    date_filters = [f for f in filters if f.get('type') == 'date']
+    content_filters = [f for f in filters if f.get('type') in ['include', 'exclude']]
 
-    if logic == 'AND':
-        return all(results)
-    elif logic == 'OR':
-        return any(results)
+    # Date filters must ALL pass (AND logic)
+    if date_filters:
+        date_results = [apply_filter(line, f) for f in date_filters]
+        if not all(date_results):
+            return False
+
+    # Content filters use the specified logic
+    if content_filters:
+        content_results = [apply_filter(line, f) for f in content_filters]
+        if logic == 'AND':
+            return all(content_results)
+        elif logic == 'OR':
+            return any(content_results)
 
     return True
 
