@@ -44,6 +44,20 @@ Then open your browser and navigate to:
 http://localhost:5001
 ```
 
+### Uploads Folder Permissions (docker-compose)
+
+The container runs as a non-root user with UID/GID `1000` and bind-mounts `./uploads` from the same directory as `docker-compose.yml`. Make sure that local folder is writable by that user before starting:
+
+```bash
+mkdir -p uploads
+# Prefer matching the container user
+sudo chown -R 1000:1000 uploads
+# If you can't change ownership, loosen permissions instead
+chmod -R 775 uploads
+```
+
+On Linux with SELinux you may also need to add `:z` to the volume entry (`- ./uploads:/app/uploads:z`).
+
 ## Docker Deployment
 
 ### Building Locally
