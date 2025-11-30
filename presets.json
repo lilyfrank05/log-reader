@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Linkly Connect",
+    "includes": ["com.linkly.connect"],
+    "excludes": [],
+    "logic": "AND"
+  },
+  {
+    "name": "Linkly Payment",
+    "includes": ["Linkly Production"],
+    "excludes": [],
+    "logic": "AND"
+  }
+]
