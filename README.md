@@ -7,10 +7,11 @@ A web service for reading and filtering `.log` files with memory-efficient strea
 - **Guest Access**: No user authentication required - uses session-based file isolation
 - **File Upload**: Upload multiple `.log` files (only `.log` extension accepted)
 - **Memory Efficient**: Streams large log files without loading entire file into memory
+- **Filter Presets**: Define and load reusable filter presets from JSON file
 - **Multiple Filters**:
-  - Filter by date range
+  - Filter by date range (always applies as AND)
   - Include/exclude specific strings
-  - Combine filters with AND/OR logic
+  - Combine content filters with AND/OR logic
 - **File Management**:
   - Upload multiple files and switch between them
   - Delete files manually
@@ -151,6 +152,72 @@ Body: {
 
 Response: { "lines": [...], "total": 1234 }
 ```
+
+### Get Presets
+```
+GET /api/presets
+
+Response: { "success": true, "presets": [...] }
+```
+
+## Filter Presets
+
+You can create reusable filter presets in `presets.json` file. Presets allow you to quickly apply common filter combinations.
+
+### Preset File Format
+
+Create a `presets.json` file in the same directory as `docker-compose.yml`:
+
+```json
+[
+  {
+    "name": "Errors Only",
+    "includes": ["ERROR", "FATAL"],
+    "excludes": [],
+    "logic": "OR"
+  },
+  {
+    "name": "Warnings and Errors",
+    "includes": ["WARN", "ERROR"],
+    "excludes": [],
+    "logic": "OR"
+  },
+  {
+    "name": "Database Operations",
+    "includes": ["SQL", "query", "database", "DB"],
+    "excludes": [],
+    "logic": "OR"
+  }
+]
+```
+
+### Preset Fields
+
+- **name** (required): Display name for the preset
+- **includes** (array): List of strings to include in logs
+- **excludes** (array): List of strings to exclude from logs
+- **logic** (string): Either "AND" or "OR" - applies to include/exclude filters only
+
+### Using Presets
+
+1. Select a preset from the "Load Preset" dropdown
+2. The include/exclude filters and logic will be populated automatically
+3. Date range is NOT affected by presets - set it manually
+4. You can add additional filters after loading a preset
+5. The selected preset stays selected even when you modify filters
+
+### Hot Reloading
+
+Presets are loaded fresh each time you reload the page. To update presets:
+1. Edit the `presets.json` file
+2. Reload the page in your browser
+3. New presets will be available immediately
+
+### Error Handling
+
+- If `presets.json` is missing, the app works normally without presets
+- Invalid JSON syntax will be reported in the API response
+- Invalid preset entries are skipped (e.g., missing "name" field)
 
 ## Configuration
 

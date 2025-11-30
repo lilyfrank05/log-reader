@@ -235,10 +235,26 @@
             cursor: pointer;
             font-size: 14px;
             margin-top: 10px;
+            margin-right: 10px;
         }
 
         .apply-btn:hover {
             background: #7d3c98;
+        }
+
+        .clear-btn {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .clear-btn:hover {
+            background: #7f8c8d;
         }
 
         .logs-section {
@@ -361,6 +377,13 @@
             <div id="fileTimeRange"></div>
 
             <div class="filter-group">
+                <label>Load Preset:</label>
+                <select class="logic-selector" id="presetSelector">
+                    <option value="">-- Select Preset --</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <label>Date Range:</label>
                 <input type="datetime-local" id="startDate" step="60">
                 <input type="datetime-local" id="endDate" step="60">
@@ -389,6 +412,7 @@
             </div>
 
             <button class="apply-btn" onclick="applyFilters()">Apply Filters</button>
+            <button class="clear-btn" onclick="clearFilters()">Clear Filters</button>
         </div>
 
         <div class="logs-section">
@@ -409,11 +433,13 @@
         let includeFilters = [];
         let excludeFilters = [];
         let fileTimeRange = null;
+        let presets = [];
 
         const fileInput = document.getElementById('fileInput');
         const uploadBtn = document.getElementById('uploadBtn');
         const selectedFileName = document.getElementById('selectedFileName');
         const uploadMessage = document.getElementById('uploadMessage');
+        const presetSelector = document.getElementById('presetSelector');
 
         // Prevent keyboard input on datetime-local fields
         const startDateInput = document.getElementById('startDate');
@@ -423,6 +449,67 @@
         endDateInput.addEventListener('keydown', (e) => e.preventDefault());
         startDateInput.addEventListener('paste', (e) => e.preventDefault());
         endDateInput.addEventListener('paste', (e) => e.preventDefault());
+
+        // Load presets when page loads
+        async function loadPresets() {
+            try {
+                const response = await fetch('/api/presets');
+                const data = await response.json();
+
+                if (data.success && data.presets) {
+                    presets = data.presets;
+                    populatePresetDropdown();
+                }
+            } catch (error) {
+                console.error('Error loading presets:', error);
+            }
+        }
+
+        // Populate preset dropdown
+        function populatePresetDropdown() {
+            presetSelector.innerHTML = '<option value="">-- Select Preset --</option>';
+            presets.forEach((preset, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = preset.name;
+                presetSelector.appendChild(option);
+            });
+        }
+
+        // Handle preset selection
+        presetSelector.addEventListener('change', (e) => {
+            const presetIndex = e.target.value;
+            if (presetIndex === '') return;
+
+            const preset = presets[presetIndex];
+            if (!preset) return;
+
+            // Clear current filters
+            includeFilters = [];
+            excludeFilters = [];
+
+            // Apply preset filters (don't touch date range)
+            preset.includes.forEach(text => {
+                if (text.trim()) {
+                    includeFilters.push(text);
+                }
+            });
+
+            preset.excludes.forEach(text => {
+                if (text.trim()) {
+                    excludeFilters.push(text);
+                }
+            });
+
+            // Set logic
+            document.getElementById('filterLogic').value = preset.logic;
+
+            // Update UI
+            renderFilters();
+        });
+
+        // Load presets on page load
+        loadPresets();
 
         // Handle file selection
         fileInput.addEventListener('change', (e) => {
@@ -636,6 +723,23 @@
         }
 
         // Apply filters and load logs
+        function clearFilters() {
+            // Clear include and exclude filters
+            includeFilters = [];
+            excludeFilters = [];
+
+            // Reset preset selector
+            presetSelector.value = '';
+
+            // Reset logic to AND
+            document.getElementById('filterLogic').value = 'AND';
+
+            // Update UI to show cleared filters
+            renderFilters();
+
+            // Note: Date range is NOT cleared
+        }
+
         async function applyFilters() {
             if (!currentFileId) {
                 alert('Please select a file first');

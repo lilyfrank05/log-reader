@@ -2,6 +2,7 @@ import os
 import re
 import uuid
 import hashlib
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, request, jsonify, session, send_from_directory
@@ -306,6 +307,72 @@ def list_files():
     session_id = get_session_id()
     files = get_user_files(session_id)
     return jsonify({'files': files})
+
+
+@app.route('/api/presets', methods=['GET'])
+def get_presets():
+    """Load presets from presets.json file with hot-reload support"""
+    presets_file = 'presets.json'
+
+    try:
+        # Check if file exists
+        if not os.path.exists(presets_file):
+            return jsonify({
+                'success': True,
+                'presets': [],
+                'message': 'No presets file found'
+            })
+
+        # Read and parse JSON file
+        with open(presets_file, 'r') as f:
+            presets = json.load(f)
+
+        # Validate presets structure
+        if not isinstance(presets, list):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid presets format: root must be an array'
+            }), 400
+
+        # Validate each preset
+        validated_presets = []
+        for idx, preset in enumerate(presets):
+            if not isinstance(preset, dict):
+                continue
+
+            # Check required fields
+            if 'name' not in preset:
+                continue
+
+            # Validate and set defaults
+            validated_preset = {
+                'name': str(preset['name']),
+                'includes': preset.get('includes', []) if isinstance(preset.get('includes'), list) else [],
+                'excludes': preset.get('excludes', []) if isinstance(preset.get('excludes'), list) else [],
+                'logic': preset.get('logic', 'AND') if preset.get('logic') in ['AND', 'OR'] else 'AND'
+            }
+
+            # Convert all includes/excludes to strings
+            validated_preset['includes'] = [str(item) for item in validated_preset['includes']]
+            validated_preset['excludes'] = [str(item) for item in validated_preset['excludes']]
+
+            validated_presets.append(validated_preset)
+
+        return jsonify({
+            'success': True,
+            'presets': validated_presets
+        })
+
+    except json.JSONDecodeError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid JSON syntax: {str(e)}'
+        }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error loading presets: {str(e)}'
+        }), 500
 
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
