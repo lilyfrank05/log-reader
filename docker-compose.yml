@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  log-reader:
+    image: ghcr.io/${GITHUB_REPOSITORY:-yourusername/log-reader}:${VERSION:-latest}
+    container_name: log-reader
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001').read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - log-reader-net
+
+volumes:
+  uploads:
+    driver: local
+
+networks:
+  log-reader-net:
+    driver: bridge
