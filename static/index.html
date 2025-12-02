@@ -390,8 +390,17 @@
 
             <div class="filter-group">
                 <label>Date Range:</label>
-                <input type="datetime-local" id="startDate" step="60">
-                <input type="datetime-local" id="endDate" step="60">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <input type="datetime-local" id="startDate" step="1">
+                        <small id="startDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                    </div>
+                    <span style="align-self: flex-start; margin-top: 8px;">to</span>
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <input type="datetime-local" id="endDate" step="1">
+                        <small id="endDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                    </div>
+                </div>
             </div>
 
             <div class="filter-group">
@@ -449,11 +458,32 @@
         // Prevent keyboard input on datetime-local fields
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
+        const startDateDisplay = document.getElementById('startDateDisplay');
+        const endDateDisplay = document.getElementById('endDateDisplay');
 
         startDateInput.addEventListener('keydown', (e) => e.preventDefault());
         endDateInput.addEventListener('keydown', (e) => e.preventDefault());
         startDateInput.addEventListener('paste', (e) => e.preventDefault());
         endDateInput.addEventListener('paste', (e) => e.preventDefault());
+
+        // Update 24-hour format display when date/time changes
+        function updateDateTimeDisplay(input, displayElement) {
+            if (!input.value) {
+                displayElement.textContent = '';
+                return;
+            }
+            const date = new Date(input.value);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            displayElement.textContent = `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
+        }
+
+        startDateInput.addEventListener('change', () => updateDateTimeDisplay(startDateInput, startDateDisplay));
+        endDateInput.addEventListener('change', () => updateDateTimeDisplay(endDateInput, endDateDisplay));
 
         // Load presets when page loads
         async function loadPresets() {
