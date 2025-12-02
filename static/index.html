@@ -425,6 +425,13 @@
                 </select>
             </div>
 
+            <div class="filter-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="caseSensitive" style="cursor: pointer; width: 16px; height: 16px;">
+                    <span>Case sensitive for the filtered texts</span>
+                </label>
+            </div>
+
             <button class="apply-btn" onclick="applyFilters()">Apply Filters</button>
             <button class="clear-btn" onclick="clearFilters()">Clear Filters</button>
         </div>
@@ -787,7 +794,8 @@
             const filterData = {
                 include: includeFilters,
                 exclude: excludeFilters,
-                logic: document.getElementById('filterLogic').value
+                logic: document.getElementById('filterLogic').value,
+                case_sensitive: document.getElementById('caseSensitive').checked
             };
 
             const startDate = document.getElementById('startDate').value;
