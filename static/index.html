@@ -782,7 +782,7 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    renderLogs(data.lines, data.total, data.start_time, data.end_time);
+                    renderLogs(data.lines, data.total, data.start_time, data.end_time, data.truncated, data.max_results);
                 } else {
                     logsContainer.innerHTML = `<div class="message error">${data.error || 'Failed to load logs'}</div>`;
                 }
@@ -792,7 +792,7 @@
         }
 
         // Render logs
-        function renderLogs(lines, total, startTime, endTime) {
+        function renderLogs(lines, total, startTime, endTime, truncated, maxResults) {
             const logsContainer = document.getElementById('logsContainer');
             const logCount = document.getElementById('logCount');
             const timeRange = document.getElementById('timeRange');
@@ -804,7 +804,15 @@
                 return;
             }
 
-            logsContainer.innerHTML = lines.map(line =>
+            // Show truncation warning if results were limited
+            let warningHtml = '';
+            if (truncated) {
+                warningHtml = `<div class="message warning" style="background: #fff3cd; color: #856404; border-left: 4px solid #ffc107; margin-bottom: 10px;">
+                    <strong>Results Truncated:</strong> Only showing first ${maxResults.toLocaleString()} lines. Please refine your filters to see more specific results.
+                </div>`;
+            }
+
+            logsContainer.innerHTML = warningHtml + lines.map(line =>
                 `<div class="log-line">
                     <span class="line-number">${line.line_number}</span>
                     <span class="line-content">${escapeHtml(line.content)}</span>
