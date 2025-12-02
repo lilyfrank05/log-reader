@@ -24,6 +24,9 @@ COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application files
 COPY --chown=appuser:appuser app.py .
+COPY --chown=appuser:appuser utils.py .
+COPY --chown=appuser:appuser filters.py .
+COPY --chown=appuser:appuser cleanup.py .
 COPY --chown=appuser:appuser static/ static/
 COPY --chown=appuser:appuser VERSION .
 

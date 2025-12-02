@@ -647,7 +647,7 @@
         // Load and display file time range
         async function loadFileTimeRange(fileId) {
             try {
-                const response = await fetch(`/api/logs/${fileId}/timerange`);
+                const response = await fetch(`/api/files/${fileId}/time-range`);
                 const data = await response.json();
 
                 if (response.ok && (data.start_time || data.end_time)) {
