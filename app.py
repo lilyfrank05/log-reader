@@ -14,6 +14,7 @@ app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
+app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
 
 # Ensure upload directory exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
@@ -40,6 +41,55 @@ def get_session_id():
 def get_user_files(session_id):
     """Get list of files uploaded by this session"""
     return session_files.get(session_id, [])
+
+
+def read_last_lines(file_path, num_lines=1000, buffer_size=8192):
+    """
+    Efficiently read the last N lines from a file without loading entire file.
+    Uses buffer reading from end of file.
+    """
+    with open(file_path, 'rb') as f:
+        # Seek to end of file
+        f.seek(0, 2)
+        file_size = f.tell()
+
+        if file_size == 0:
+            return []
+
+        # Read backwards in chunks
+        lines = []
+        buffer = b''
+        offset = 0
+
+        while len(lines) < num_lines and offset < file_size:
+            # Calculate how much to read
+            read_size = min(buffer_size, file_size - offset)
+            offset += read_size
+
+            # Seek and read
+            f.seek(file_size - offset)
+            chunk = f.read(read_size)
+
+            # Prepend to buffer
+            buffer = chunk + buffer
+
+            # Split into lines
+            lines = buffer.split(b'\n')
+
+            # If we have enough lines, break
+            if len(lines) > num_lines:
+                break
+
+        # Decode lines (skip empty last line if exists)
+        decoded_lines = []
+        for line in lines:
+            try:
+                decoded_lines.append(line.decode('utf-8', errors='replace').rstrip('\r'))
+            except:
+                continue
+
+        # Return last num_lines (reversed to get chronological order from end)
+        return [line for line in decoded_lines if line][-num_lines:]
 
 
 def calculate_file_hash(file_stream):
@@ -136,7 +186,7 @@ def parse_timestamp(line):
     return None
 
 
-def apply_filter(line, filter_config):
+def apply_filter(line, filter_config, case_sensitive=True):
     """
     Apply a single filter to a line.
     filter_config: {
@@ -145,6 +195,7 @@ def apply_filter(line, filter_config):
         'start_date': optional datetime,
         'end_date': optional datetime
     }
+    case_sensitive: boolean, whether string matching is case sensitive
     Returns True if line passes the filter
     """
     filter_type = filter_config.get('type')
@@ -165,15 +216,25 @@ def apply_filter(line, filter_config):
         return True
 
     elif filter_type == 'include':
-        return filter_config['value'] in line
+        search_value = filter_config['value']
+        search_line = line
+        if not case_sensitive:
+            search_value = search_value.lower()
+            search_line = line.lower()
+        return search_value in search_line
 
     elif filter_type == 'exclude':
-        return filter_config['value'] not in line
+        search_value = filter_config['value']
+        search_line = line
+        if not case_sensitive:
+            search_value = search_value.lower()
+            search_line = line.lower()
+        return search_value not in search_line
 
     return True
 
 
-def apply_filters(line, filters, logic='AND'):
+def apply_filters(line, filters, logic='AND', case_sensitive=True):
     """
     Apply multiple filters with specified logic.
     Date filters always use AND logic.
@@ -181,6 +242,7 @@ def apply_filters(line, filters, logic='AND'):
 
     filters: list of filter configs
     logic: 'AND' | 'OR' - applies only to include/exclude filters
+    case_sensitive: boolean, whether string matching is case sensitive
     """
     if not filters:
         return True
@@ -191,13 +253,13 @@ def apply_filters(line, filters, logic='AND'):
 
     # Date filters must ALL pass (AND logic)
     if date_filters:
-        date_results = [apply_filter(line, f) for f in date_filters]
+        date_results = [apply_filter(line, f, case_sensitive) for f in date_filters]
         if not all(date_results):
             return False
 
     # Content filters use the specified logic
     if content_filters:
-        content_results = [apply_filter(line, f) for f in content_filters]
+        content_results = [apply_filter(line, f, case_sensitive) for f in content_filters]
         if logic == 'AND':
             return all(content_results)
         elif logic == 'OR':
@@ -206,7 +268,7 @@ def apply_filters(line, filters, logic='AND'):
     return True
 
 
-def stream_filtered_logs(file_path, filters=None, logic='AND', chunk_size=1000):
+def stream_filtered_logs(file_path, filters=None, logic='AND', case_sensitive=True, chunk_size=1000):
     """
     Memory-efficient log file reading with filtering.
     Yields lines in chunks to avoid loading entire file into memory.
@@ -219,7 +281,7 @@ def stream_filtered_logs(file_path, filters=None, logic='AND', chunk_size=1000):
             line = line.rstrip('\n\r')
 
             # Apply filters if provided
-            if filters and not apply_filters(line, filters, logic):
+            if filters and not apply_filters(line, filters, logic, case_sensitive):
                 continue
 
             lines_buffer.append({'line_number': line_number, 'content': line})
@@ -449,21 +511,21 @@ def get_file_timerange(file_id):
     last_timestamp = None
 
     try:
+        # Find first timestamp (read from beginning)
         with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            # Find first timestamp
             for line in f:
                 ts = parse_timestamp(line.rstrip('\n\r'))
                 if ts:
                     first_timestamp = ts
                     break
 
-        # Find last timestamp
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            for line in reversed(list(f)):
-                ts = parse_timestamp(line.rstrip('\n\r'))
-                if ts:
-                    last_timestamp = ts
-                    break
+        # Find last timestamp (efficiently read last lines without loading entire file)
+        last_lines = read_last_lines(file_path, num_lines=1000)
+        for line in reversed(last_lines):
+            ts = parse_timestamp(line)
+            if ts:
+                last_timestamp = ts
+                break
 
     except Exception as e:
         return jsonify({'error': f'Error reading log file: {str(e)}'}), 500
@@ -542,13 +604,25 @@ def get_logs(file_id):
     if logic not in ['AND', 'OR']:
         logic = 'AND'
 
+    # Get case sensitivity option (default True for backwards compatibility)
+    case_sensitive = data.get('case_sensitive', True)
+
     # Stream filtered results and extract time range
     all_lines = []
     first_timestamp = None
     last_timestamp = None
+    max_results = app.config['MAX_RESULTS']
+    truncated = False
 
     try:
-        for chunk in stream_filtered_logs(file_path, filters if filters else None, logic):
+        for chunk in stream_filtered_logs(file_path, filters if filters else None, logic, case_sensitive):
+            # Check if we're about to exceed max results
+            if len(all_lines) + len(chunk) > max_results:
+                # Add only up to max_results
+                remaining = max_results - len(all_lines)
+                all_lines.extend(chunk[:remaining])
+                truncated = True
+                break
             all_lines.extend(chunk)
     except Exception as e:
         return jsonify({'error': f'Error reading log file: {str(e)}'}), 500
@@ -569,7 +643,9 @@ def get_logs(file_id):
 
     response_data = {
         'lines': all_lines,
-        'total': len(all_lines)
+        'total': len(all_lines),
+        'truncated': truncated,
+        'max_results': max_results
     }
 
     if first_timestamp:
