@@ -2,7 +2,7 @@
 from utils import parse_timestamp
 
 
-def apply_filter(line, filter_config, case_sensitive=True):
+def apply_filter(line, filter_config, case_sensitive=True, line_lower=None, cached_timestamp=None):
     """
     Apply a single filter to a line.
     filter_config: {
@@ -12,14 +12,16 @@ def apply_filter(line, filter_config, case_sensitive=True):
         'end_date': optional datetime
     }
     case_sensitive: boolean, whether string matching is case sensitive
+    line_lower: pre-computed lowercase version of line (optional)
+    cached_timestamp: pre-parsed timestamp (optional)
     Returns True if line passes the filter
     """
     filter_type = filter_config.get('type')
 
     if filter_type == 'date':
-        timestamp = parse_timestamp(line)
+        # Use cached timestamp if provided, otherwise parse
+        timestamp = cached_timestamp if cached_timestamp is not None else parse_timestamp(line)
         if timestamp is None:
-            # If no timestamp and we're filtering by date, exclude the line
             return False
 
         start_date = filter_config.get('start_date')
@@ -33,18 +35,22 @@ def apply_filter(line, filter_config, case_sensitive=True):
 
     elif filter_type == 'include':
         search_value = filter_config['value']
-        search_line = line
         if not case_sensitive:
             search_value = search_value.lower()
-            search_line = line.lower()
+            # Use pre-computed lowercase line if available
+            search_line = line_lower if line_lower is not None else line.lower()
+        else:
+            search_line = line
         return search_value in search_line
 
     elif filter_type == 'exclude':
         search_value = filter_config['value']
-        search_line = line
         if not case_sensitive:
             search_value = search_value.lower()
-            search_line = line.lower()
+            # Use pre-computed lowercase line if available
+            search_line = line_lower if line_lower is not None else line.lower()
+        else:
+            search_line = line
         return search_value not in search_line
 
     return True
@@ -56,6 +62,12 @@ def apply_filters(line, filters, logic='AND', case_sensitive=True):
     Date filters always use AND logic.
     Include/exclude filters use the specified logic (AND/OR).
 
+    OPTIMIZED VERSION:
+    - Pre-computes lowercase line once if needed
+    - Pre-parses timestamp once if needed
+    - Uses short-circuit evaluation
+    - Avoids redundant filter separation
+
     filters: list of filter configs
     logic: 'AND' | 'OR' - applies only to include/exclude filters
     case_sensitive: boolean, whether string matching is case sensitive
@@ -63,23 +75,47 @@ def apply_filters(line, filters, logic='AND', case_sensitive=True):
     if not filters:
         return True
 
-    # Separate date filters from include/exclude filters
-    date_filters = [f for f in filters if f.get('type') == 'date']
-    content_filters = [f for f in filters if f.get('type') in ['include', 'exclude']]
+    # Pre-compute lowercase line if case-insensitive matching is needed
+    line_lower = None
+    if not case_sensitive:
+        line_lower = line.lower()
 
-    # Date filters must ALL pass (AND logic)
+    # Pre-parse timestamp if any date filter exists
+    cached_timestamp = None
+    has_date_filter = any(f.get('type') == 'date' for f in filters)
+    if has_date_filter:
+        cached_timestamp = parse_timestamp(line)
+
+    # Process filters in one pass with short-circuit evaluation
+    date_filters = []
+    content_filters = []
+
+    for f in filters:
+        if f.get('type') == 'date':
+            date_filters.append(f)
+        elif f.get('type') in ['include', 'exclude']:
+            content_filters.append(f)
+
+    # Date filters must ALL pass (AND logic) - short circuit on first failure
     if date_filters:
-        date_results = [apply_filter(line, f, case_sensitive) for f in date_filters]
-        if not all(date_results):
-            return False
+        for f in date_filters:
+            if not apply_filter(line, f, case_sensitive, line_lower, cached_timestamp):
+                return False
 
     # Content filters use the specified logic
     if content_filters:
-        content_results = [apply_filter(line, f, case_sensitive) for f in content_filters]
         if logic == 'AND':
-            return all(content_results)
+            # Short circuit: return False on first failure
+            for f in content_filters:
+                if not apply_filter(line, f, case_sensitive, line_lower, cached_timestamp):
+                    return False
+            return True
         elif logic == 'OR':
-            return any(content_results)
+            # Short circuit: return True on first success
+            for f in content_filters:
+                if apply_filter(line, f, case_sensitive, line_lower, cached_timestamp):
+                    return True
+            return False
 
     return True
 
