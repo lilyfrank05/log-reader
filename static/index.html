@@ -304,6 +304,17 @@
             padding: 2px 0;
             border-bottom: 1px solid #2d2d2d;
             display: flex;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .log-line:hover {
+            background-color: #2a2a2a;
+        }
+
+        .log-line.selected {
+            background-color: #2c5282;
+            border-left: 3px solid #3498db;
         }
 
         .line-number {
@@ -400,6 +411,22 @@
                         <input type="datetime-local" id="endDate" step="1">
                         <small id="endDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
                     </div>
+                </div>
+                <small style="color: #666; font-size: 11px; margin-top: 5px; display: block;">
+                    💡 Tip: Click a log line to select it, then use "Apply Context" below to slice a time window
+                </small>
+            </div>
+
+            <div class="filter-group">
+                <label>Time Window (click a log line to select, then apply):</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select class="logic-selector" id="timeWindow">
+                        <option value="1">± 1 minute</option>
+                        <option value="2" selected>± 2 minutes</option>
+                        <option value="5">± 5 minutes</option>
+                        <option value="10">± 10 minutes</option>
+                    </select>
+                    <button class="add-filter-btn" onclick="applyTimeWindowToSelected()" id="contextBtn" disabled style="opacity: 0.5;">Apply Context</button>
                 </div>
             </div>
 
@@ -788,6 +815,9 @@
                 return;
             }
 
+            // Clear any selected log line
+            clearSelection();
+
             const logsContainer = document.getElementById('logsContainer');
             logsContainer.innerHTML = '<div class="loading">Loading logs...</div>';
 
@@ -850,8 +880,8 @@
                 </div>`;
             }
 
-            logsContainer.innerHTML = warningHtml + lines.map(line =>
-                `<div class="log-line">
+            logsContainer.innerHTML = warningHtml + lines.map((line, index) =>
+                `<div class="log-line" onclick="selectLogLine(this)" data-log-content="${escapeHtml(line.content).replace(/"/g, '&quot;')}">
                     <span class="line-number">${line.line_number}</span>
                     <span class="line-content">${escapeHtml(line.content)}</span>
                 </div>`
@@ -885,6 +915,103 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Extract timestamp from log line
+        function extractTimestamp(logLine) {
+            // Match pattern like [2025-11-19 08:03:22]
+            const match = logLine.match(/\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\]/);
+            if (match) {
+                return new Date(match[1]);
+            }
+            return null;
+        }
+
+        // Store selected log line content
+        let selectedLogContent = null;
+
+        // Clear selection state
+        function clearSelection() {
+            selectedLogContent = null;
+
+            // Remove selection from all log lines
+            document.querySelectorAll('.log-line').forEach(line => {
+                line.classList.remove('selected');
+            });
+
+            // Disable the context button
+            const contextBtn = document.getElementById('contextBtn');
+            contextBtn.disabled = true;
+            contextBtn.style.opacity = '0.5';
+        }
+
+        // Select a log line
+        function selectLogLine(element) {
+            // Remove selection from all log lines
+            document.querySelectorAll('.log-line').forEach(line => {
+                line.classList.remove('selected');
+            });
+
+            // Add selection to clicked line
+            element.classList.add('selected');
+
+            // Get log content from data attribute
+            const logContent = element.getAttribute('data-log-content');
+
+            // Decode HTML entities back to original text
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = logContent;
+            selectedLogContent = textarea.value;
+
+            // Enable the context button
+            const contextBtn = document.getElementById('contextBtn');
+            contextBtn.disabled = false;
+            contextBtn.style.opacity = '1';
+        }
+
+        // Apply time window to selected log line
+        function applyTimeWindowToSelected() {
+            if (!selectedLogContent) {
+                alert('Please select a log line first');
+                return;
+            }
+
+            // Extract timestamp from the log line
+            const timestamp = extractTimestamp(selectedLogContent);
+
+            if (!timestamp || isNaN(timestamp.getTime())) {
+                alert('No valid timestamp found in the selected log entry');
+                return;
+            }
+
+            // Get the selected time window (in minutes)
+            const windowMinutes = parseInt(document.getElementById('timeWindow').value);
+
+            // Calculate start and end times
+            const startTime = new Date(timestamp.getTime() - windowMinutes * 60 * 1000);
+            const endTime = new Date(timestamp.getTime() + windowMinutes * 60 * 1000);
+
+            // Format dates for datetime-local input (YYYY-MM-DDTHH:MM:SS)
+            const formatForInput = (date) => {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+            };
+
+            // Set the date range inputs
+            startDateInput.value = formatForInput(startTime);
+            endDateInput.value = formatForInput(endTime);
+
+            // Update the display labels
+            updateDateTimeDisplay(startDateInput, startDateDisplay);
+            updateDateTimeDisplay(endDateInput, endDateDisplay);
+
+            // Automatically apply filters (this will clear selection)
+            applyFilters();
         }
 
         // Load files on page load
