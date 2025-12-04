@@ -46,5 +46,5 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5001').read()"
 
-# Run with gunicorn for production (single worker to maintain in-memory session state)
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+# Run with gunicorn for production (4 workers now that we use Redis for sessions)
+CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:5001", "--workers", "4", "--threads", "4", "--timeout", "120", "app:app"]

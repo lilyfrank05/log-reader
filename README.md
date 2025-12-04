@@ -90,28 +90,92 @@ To use automated builds:
 ### Requirements
 
 - Python 3.11+
-- Flask
-- APScheduler
+- Redis (for session storage)
+- Flask, Flask-Session, APScheduler
 - Gunicorn (for production)
 
-### Installation
+### Local Testing Options
 
-1. Install dependencies:
+#### Option 1: Using Docker Compose (Recommended)
+
+The easiest way to test locally with Redis:
+
 ```bash
+# Start both Redis and the application
+docker-compose up -d
+
+# View logs
+docker-compose logs -f log-reader
+
+# Stop everything
+docker-compose down
+```
+
+Access the application at `http://localhost:5001`
+
+#### Option 2: Local Development Setup
+
+For development with hot-reload:
+
+**Step 1: Install and Start Redis**
+
+```bash
+# macOS (using Homebrew)
+brew install redis
+redis-server
+
+# Ubuntu/Debian
+sudo apt-get install redis-server
+sudo systemctl start redis
+
+# Or use Docker for just Redis
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+**Step 2: Set Up Python Environment**
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-2. Start the development server:
+**Step 3: Start the Application**
+
 ```bash
+# Set environment variables
+export REDIS_URL=redis://localhost:6379/0
+export SECRET_KEY=dev-secret-key
+
+# Run the app
 python app.py
 ```
 
-3. Open your browser and navigate to:
+**Step 4: Access the Application**
+
+Open your browser and navigate to:
 ```
 http://localhost:5001
 ```
 
-4. Upload a `.log` file and start filtering!
+Upload a `.log` file and start filtering!
+
+### Testing Multi-Worker Performance
+
+To test the multi-worker setup locally:
+
+```bash
+# Use gunicorn directly (simulates production)
+source .venv/bin/activate
+export REDIS_URL=redis://localhost:6379/0
+
+gunicorn --bind 0.0.0.0:5001 --workers 4 --threads 4 --timeout 120 app:app
+```
+
+This runs with 4 workers × 4 threads = 16 concurrent request capacity.
 
 ## API Endpoints
 
@@ -227,11 +291,18 @@ Presets are loaded fresh each time you reload the page. To update presets:
   - Default in docker-compose: `change-this-secret-key-in-production`
   - Set a secure random string in production
 
+- **REDIS_URL**: Redis connection URL for session storage
+  - Default: `redis://localhost:6379/0`
+  - Docker compose: `redis://redis:6379/0` (uses internal network)
+  - Required for multi-worker deployments
+
 ### Application Settings
 
 - **Upload Folder**: `uploads/` (created automatically, persisted in Docker volume)
 - **Max File Size**: 500MB
 - **Port**: 5001
+- **Workers**: 4 workers × 4 threads = 16 concurrent requests
+- **Session Backend**: Redis (enables multi-worker session sharing)
 - **Cleanup Schedule**:
   - Daily full cleanup at 2:00 AM (deletes all files)
   - Hourly cleanup of unreferenced files
@@ -241,9 +312,9 @@ Presets are loaded fresh each time you reload the page. To update presets:
 
 The application uses:
 - **Backend**: Flask (Python)
-- **Frontend**: Vanilla JavaScript with modern CSS
+- **Frontend**: Vanilla JavaScript with modern CSS (separated into `app.js` and `styles.css`)
 - **Scheduler**: APScheduler for automated cleanup
-- **Session Management**: Flask sessions for guest user isolation
+- **Session Management**: Redis-backed Flask sessions for guest user isolation across multiple workers
 
 ## Security Notes
 
