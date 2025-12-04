@@ -1,17 +1,34 @@
-version: '3.8'
-
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: log-reader-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - log-reader-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   log-reader:
-    image: ghcr.io/${GITHUB_REPOSITORY:-yourusername/log-reader}:${VERSION:-latest}
+    image: ghcr.io/lilyfrank05/log-reader:${VERSION:-latest}
     container_name: log-reader
     restart: unless-stopped
     ports:
       - "5001:5001"
     environment:
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./uploads:/app/uploads
       - ./presets.json:/app/presets.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001').read()"]
       interval: 30s
@@ -23,6 +40,8 @@ services:
 
 volumes:
   uploads:
+    driver: local
+  redis-data:
     driver: local
 
 networks:

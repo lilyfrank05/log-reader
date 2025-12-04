@@ -6,9 +6,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, session, send_from_directory
+from flask_session import Session
 from werkzeug.utils import secure_filename
 from apscheduler.schedulers.background import BackgroundScheduler
 from dateutil import parser as date_parser
+import redis
 
 # Import custom modules
 from utils import read_last_lines, parse_timestamp
@@ -21,6 +23,17 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-producti
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
+
+# Configure Redis session
+app.config['SESSION_TYPE'] = 'redis'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_KEY_PREFIX'] = 'logviewer:'
+redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+app.config['SESSION_REDIS'] = redis.from_url(redis_url)
+
+# Initialize session
+Session(app)
 
 # Ensure upload directory exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
