@@ -461,6 +461,7 @@
 
             <button class="apply-btn" onclick="applyFilters()">Apply Filters</button>
             <button class="clear-btn" onclick="clearFilters()">Clear Filters</button>
+            <button class="clear-btn" onclick="restoreFilters()" id="restoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
         </div>
 
         <div class="logs-section">
@@ -482,6 +483,10 @@
         let excludeFilters = [];
         let fileTimeRange = null;
         let presets = [];
+
+        // Filter history stack
+        let filterHistory = [];
+        let currentHistoryIndex = -1;
 
         const fileInput = document.getElementById('fileInput');
         const uploadBtn = document.getElementById('uploadBtn');
@@ -791,6 +796,116 @@
             `).join('');
         }
 
+        // Save current filter state to history
+        function saveToHistory() {
+            const state = {
+                includeFilters: [...includeFilters],
+                excludeFilters: [...excludeFilters],
+                logic: document.getElementById('filterLogic').value,
+                caseSensitive: document.getElementById('caseSensitive').checked,
+                startDate: document.getElementById('startDate').value,
+                endDate: document.getElementById('endDate').value,
+                presetValue: presetSelector.value,
+                timestamp: Date.now()
+            };
+
+            // If we're not at the end of history, truncate everything after current position
+            if (currentHistoryIndex < filterHistory.length - 1) {
+                filterHistory = filterHistory.slice(0, currentHistoryIndex + 1);
+            }
+
+            // Add new state to history
+            filterHistory.push(state);
+            currentHistoryIndex = filterHistory.length - 1;
+
+            // Save to sessionStorage
+            try {
+                sessionStorage.setItem('filterHistory', JSON.stringify(filterHistory));
+                sessionStorage.setItem('currentHistoryIndex', currentHistoryIndex.toString());
+            } catch (e) {
+                console.error('Failed to save history to sessionStorage:', e);
+            }
+
+            // Update restore button state
+            updateRestoreButton();
+        }
+
+        // Restore previous filter state from history
+        function restoreFilters() {
+            if (currentHistoryIndex <= 0) {
+                alert('No previous state to restore');
+                return;
+            }
+
+            // Move back in history
+            currentHistoryIndex--;
+            const state = filterHistory[currentHistoryIndex];
+
+            // Restore filters
+            includeFilters = [...state.includeFilters];
+            excludeFilters = [...state.excludeFilters];
+
+            // Restore UI elements
+            document.getElementById('filterLogic').value = state.logic;
+            document.getElementById('caseSensitive').checked = state.caseSensitive;
+            document.getElementById('startDate').value = state.startDate;
+            document.getElementById('endDate').value = state.endDate;
+            presetSelector.value = state.presetValue;
+
+            // Update datetime displays
+            updateDateTimeDisplay(startDateInput, startDateDisplay);
+            updateDateTimeDisplay(endDateInput, endDateDisplay);
+
+            // Update filter tags UI
+            renderFilters();
+
+            // Save current index to sessionStorage
+            try {
+                sessionStorage.setItem('currentHistoryIndex', currentHistoryIndex.toString());
+            } catch (e) {
+                console.error('Failed to save history index to sessionStorage:', e);
+            }
+
+            // Update restore button state
+            updateRestoreButton();
+
+            // Automatically apply the restored filters without saving to history
+            applyFilters(true);
+        }
+
+        // Update restore button enabled/disabled state
+        function updateRestoreButton() {
+            const restoreBtn = document.getElementById('restoreBtn');
+            if (currentHistoryIndex > 0) {
+                restoreBtn.disabled = false;
+                restoreBtn.style.opacity = '1';
+            } else {
+                restoreBtn.disabled = true;
+                restoreBtn.style.opacity = '0.5';
+            }
+        }
+
+        // Load filter history from sessionStorage on page load
+        function loadHistoryFromSession() {
+            try {
+                const savedHistory = sessionStorage.getItem('filterHistory');
+                const savedIndex = sessionStorage.getItem('currentHistoryIndex');
+
+                if (savedHistory) {
+                    filterHistory = JSON.parse(savedHistory);
+                }
+                if (savedIndex !== null) {
+                    currentHistoryIndex = parseInt(savedIndex);
+                }
+
+                updateRestoreButton();
+            } catch (e) {
+                console.error('Failed to load history from sessionStorage:', e);
+                filterHistory = [];
+                currentHistoryIndex = -1;
+            }
+        }
+
         // Apply filters and load logs
         function clearFilters() {
             // Clear include and exclude filters
@@ -809,10 +924,15 @@
             // Note: Date range is NOT cleared
         }
 
-        async function applyFilters() {
+        async function applyFilters(skipSave = false) {
             if (!currentFileId) {
                 alert('Please select a file first');
                 return;
+            }
+
+            // Save current state to history before applying new filters (unless restoring)
+            if (!skipSave) {
+                saveToHistory();
             }
 
             // Clear any selected log line
@@ -1014,7 +1134,8 @@
             applyFilters();
         }
 
-        // Load files on page load
+        // Load files and history on page load
+        loadHistoryFromSession();
         loadFiles();
     </script>
 </body>
