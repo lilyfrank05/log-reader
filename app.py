@@ -35,14 +35,78 @@ app.config['SESSION_REDIS'] = redis.from_url(redis_url)
 # Initialize session
 Session(app)
 
+# Create Redis client for file metadata (separate from session storage)
+redis_client = redis.from_url(redis_url, decode_responses=True)
+
 # Ensure upload directory exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
 
-# Store mapping of session_id -> list of uploaded files
-session_files = {}
 
-# Store mapping of file_hash -> stored_filename for deduplication across users
-file_hash_map = {}
+# ============================================================================
+# Redis Helper Functions for File Metadata
+# ============================================================================
+
+def get_session_files_key(session_id):
+    """Get Redis key for session files list"""
+    return f"files:session:{session_id}"
+
+
+def get_file_hash_key(file_hash):
+    """Get Redis key for file hash mapping"""
+    return f"files:hash:{file_hash}"
+
+
+def get_user_files(session_id):
+    """Get list of files uploaded by this session from Redis"""
+    key = get_session_files_key(session_id)
+    files_json = redis_client.get(key)
+    if files_json:
+        return json.loads(files_json)
+    return []
+
+
+def add_file_to_session(session_id, file_info):
+    """Add a file to session's file list in Redis"""
+    files = get_user_files(session_id)
+    files.append(file_info)
+    key = get_session_files_key(session_id)
+    redis_client.set(key, json.dumps(files))
+
+
+def remove_file_from_session(session_id, file_id):
+    """Remove a file from session's file list in Redis"""
+    files = get_user_files(session_id)
+    files = [f for f in files if f['id'] != file_id]
+    key = get_session_files_key(session_id)
+    if files:
+        redis_client.set(key, json.dumps(files))
+    else:
+        redis_client.delete(key)
+    return files
+
+
+def get_file_hash_mapping(file_hash):
+    """Get stored filename for a file hash from Redis"""
+    key = get_file_hash_key(file_hash)
+    return redis_client.get(key)
+
+
+def set_file_hash_mapping(file_hash, stored_name):
+    """Set stored filename for a file hash in Redis"""
+    key = get_file_hash_key(file_hash)
+    redis_client.set(key, stored_name)
+
+
+def delete_file_hash_mapping(file_hash):
+    """Delete file hash mapping from Redis"""
+    key = get_file_hash_key(file_hash)
+    redis_client.delete(key)
+
+
+def get_all_session_ids():
+    """Get all session IDs that have uploaded files"""
+    keys = redis_client.keys("files:session:*")
+    return [key.replace("files:session:", "") for key in keys]
 
 
 # ============================================================================
@@ -59,11 +123,6 @@ def get_session_id():
     if 'session_id' not in session:
         session['session_id'] = str(uuid.uuid4())
     return session['session_id']
-
-
-def get_user_files(session_id):
-    """Get list of files uploaded by this session"""
-    return session_files.get(session_id, [])
 
 
 def calculate_file_hash(file_stream):
@@ -107,11 +166,10 @@ def upload_file():
 
     # Track file for this session
     session_id = get_session_id()
-    if session_id not in session_files:
-        session_files[session_id] = []
+    user_files = get_user_files(session_id)
 
     # Check if this user already uploaded this exact file
-    for existing_file in session_files[session_id]:
+    for existing_file in user_files:
         if existing_file.get('hash') == file_hash:
             return jsonify({
                 'success': True,
@@ -121,15 +179,16 @@ def upload_file():
             })
 
     # Check if this file exists globally (uploaded by another user)
-    if file_hash in file_hash_map:
+    stored_name = get_file_hash_mapping(file_hash)
+    if stored_name:
         # Reuse the existing file, but create a new reference for this user
-        stored_name = file_hash_map[file_hash]
+        pass
     else:
         # New file - save it and add to global hash map
         stored_name = f"{uuid.uuid4()}_{original_filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_name)
         file.save(file_path)
-        file_hash_map[file_hash] = stored_name
+        set_file_hash_mapping(file_hash, stored_name)
 
     # Create a unique file reference for this user
     file_info = {
@@ -139,7 +198,7 @@ def upload_file():
         'hash': file_hash,
         'upload_time': datetime.now().isoformat()
     }
-    session_files[session_id].append(file_info)
+    add_file_to_session(session_id, file_info)
 
     return jsonify({
         'success': True,
@@ -240,12 +299,13 @@ def delete_file(file_id):
     stored_name = file_to_delete['stored_name']
 
     # Remove from this user's session tracking
-    session_files[session_id].remove(file_to_delete)
+    remove_file_from_session(session_id, file_id)
 
     # Check if any other user still references this physical file
     file_still_in_use = False
-    for other_session_id in session_files:
-        for file_info in session_files[other_session_id]:
+    for other_session_id in get_all_session_ids():
+        other_files = get_user_files(other_session_id)
+        for file_info in other_files:
             if file_info['stored_name'] == stored_name:
                 file_still_in_use = True
                 break
@@ -261,8 +321,8 @@ def delete_file(file_id):
 
             # Remove from global hash map
             file_hash = file_to_delete.get('hash')
-            if file_hash and file_hash in file_hash_map:
-                del file_hash_map[file_hash]
+            if file_hash:
+                delete_file_hash_mapping(file_hash)
         except Exception as e:
             return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
 
@@ -448,7 +508,7 @@ scheduler = BackgroundScheduler()
 
 # Daily full cleanup at 2 AM
 scheduler.add_job(
-    func=lambda: daily_full_cleanup(app.config['UPLOAD_FOLDER'], session_files, file_hash_map),
+    func=lambda: daily_full_cleanup(app.config['UPLOAD_FOLDER'], redis_client),
     trigger='cron',
     hour=2,
     minute=0
@@ -456,7 +516,7 @@ scheduler.add_job(
 
 # Hourly cleanup of unreferenced files
 scheduler.add_job(
-    func=lambda: cleanup_old_files(app.config['UPLOAD_FOLDER'], session_files, file_hash_map),
+    func=lambda: cleanup_old_files(app.config['UPLOAD_FOLDER'], redis_client),
     trigger="interval",
     hours=1
 )
