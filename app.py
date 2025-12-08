@@ -162,6 +162,7 @@ def upload_file():
 
     # Calculate file hash to check for duplicates
     file_hash = calculate_file_hash(file.stream)
+    file.stream.seek(0)  # Reset file pointer after hashing
     original_filename = secure_filename(file.filename)
 
     # Track file for this session
