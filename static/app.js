@@ -129,7 +129,26 @@ uploadBtn.addEventListener('click', async () => {
     formData.append('file', file);
 
     uploadBtn.disabled = true;
-    showMessage(uploadMessage, 'Uploading...', 'info');
+
+    // Show progress bar
+    const uploadProgress = document.getElementById('uploadProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    uploadProgress.style.display = 'block';
+    uploadMessage.style.display = 'none';
+
+    // Simulate upload progress
+    let progress = 0;
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Uploading file...';
+
+    const progressInterval = setInterval(() => {
+        if (progress < 90) {
+            progress += Math.random() * 15;
+            if (progress > 90) progress = 90;
+            progressFill.style.width = progress + '%';
+        }
+    }, 200);
 
     try {
         const response = await fetch('/api/upload', {
@@ -137,22 +156,43 @@ uploadBtn.addEventListener('click', async () => {
             body: formData
         });
 
+        // Complete upload phase
+        clearInterval(progressInterval);
+        progress = 90;
+        progressFill.style.width = '90%';
+        progressText.textContent = 'Processing file...';
+
         const data = await response.json();
 
         if (response.ok) {
-            if (data.duplicate) {
-                showMessage(uploadMessage, 'You have already uploaded this file', 'info');
-            } else {
-                showMessage(uploadMessage, 'File uploaded successfully!', 'success');
-            }
-            fileInput.value = '';
-            selectedFileName.textContent = '';
-            loadFiles();
+            // Complete progress
+            progressFill.style.width = '100%';
+            progressText.textContent = 'Loading file list...';
+
+            // Load files and show success after
+            await loadFiles();
+
+            setTimeout(() => {
+                uploadProgress.style.display = 'none';
+                uploadMessage.style.display = 'block';
+                if (data.duplicate) {
+                    showMessage(uploadMessage, 'You have already uploaded this file', 'info');
+                } else {
+                    showMessage(uploadMessage, 'File uploaded successfully!', 'success');
+                }
+                fileInput.value = '';
+                selectedFileName.textContent = '';
+            }, 300);
         } else {
+            uploadProgress.style.display = 'none';
+            uploadMessage.style.display = 'block';
             showMessage(uploadMessage, data.error || 'Upload failed', 'error');
             uploadBtn.disabled = false;
         }
     } catch (error) {
+        clearInterval(progressInterval);
+        uploadProgress.style.display = 'none';
+        uploadMessage.style.display = 'block';
         showMessage(uploadMessage, 'Upload failed: ' + error.message, 'error');
         uploadBtn.disabled = false;
     }
