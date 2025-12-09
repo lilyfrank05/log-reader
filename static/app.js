@@ -137,18 +137,35 @@ uploadBtn.addEventListener('click', async () => {
     uploadProgress.style.display = 'block';
     uploadMessage.style.display = 'none';
 
-    // Simulate upload progress
+    // Simulate upload progress with stage indicators
     let progress = 0;
+    let stage = 'uploading';
     progressFill.style.width = '0%';
-    progressText.textContent = 'Uploading file...';
+    progressText.textContent = 'Uploading file to server...';
 
     const progressInterval = setInterval(() => {
-        if (progress < 90) {
-            progress += Math.random() * 15;
-            if (progress > 90) progress = 90;
+        if (stage === 'uploading' && progress < 70) {
+            progress += Math.random() * 10;
+            if (progress > 70) {
+                progress = 70;
+                stage = 'hashing';
+                progressText.textContent = 'Server processing (calculating hash)...';
+            }
+            progressFill.style.width = progress + '%';
+        } else if (stage === 'hashing' && progress < 85) {
+            progress += Math.random() * 5;
+            if (progress > 85) {
+                progress = 85;
+                stage = 'saving';
+                progressText.textContent = 'Server processing (saving file)...';
+            }
+            progressFill.style.width = progress + '%';
+        } else if (stage === 'saving' && progress < 95) {
+            progress += Math.random() * 3;
+            if (progress > 95) progress = 95;
             progressFill.style.width = progress + '%';
         }
-    }, 200);
+    }, 300);
 
     try {
         const response = await fetch('/api/upload', {
@@ -158,9 +175,8 @@ uploadBtn.addEventListener('click', async () => {
 
         // Complete upload phase
         clearInterval(progressInterval);
-        progress = 90;
-        progressFill.style.width = '90%';
-        progressText.textContent = 'Processing file...';
+        progressFill.style.width = '100%';
+        progressText.textContent = 'Finalizing...';
 
         const data = await response.json();
 
