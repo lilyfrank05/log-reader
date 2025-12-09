@@ -72,7 +72,7 @@ def daily_full_cleanup(upload_folder, redis_client):
         except Exception as e:
             print(f"Error deleting {file_path}: {e}")
 
-    # Clear all session files from Redis
+    # Clear all session files and hash sets from Redis
     session_keys = redis_client.keys("files:session:*")
     if session_keys:
         redis_client.delete(*session_keys)
