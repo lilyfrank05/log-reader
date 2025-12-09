@@ -35,8 +35,15 @@ app.config['SESSION_REDIS'] = redis.from_url(redis_url)
 # Initialize session
 Session(app)
 
-# Create Redis client for file metadata (separate from session storage)
-redis_client = redis.from_url(redis_url, decode_responses=True)
+# Create Redis client for file metadata with optimized connection pool
+redis_client = redis.from_url(
+    redis_url,
+    decode_responses=True,
+    max_connections=20,  # Increased pool size for multi-worker setup
+    socket_keepalive=True,
+    socket_connect_timeout=5,
+    retry_on_timeout=True
+)
 
 # Ensure upload directory exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
@@ -65,23 +72,49 @@ def get_user_files(session_id):
     return []
 
 
+def has_file_hash(session_id, file_hash):
+    """Check if user already uploaded a file with this hash (fast Redis SET check)"""
+    key = f"files:session:{session_id}:hashes"
+    return redis_client.sismember(key, file_hash)
+
+
+def add_file_hash_to_session(session_id, file_hash):
+    """Add file hash to user's set of uploaded hashes"""
+    key = f"files:session:{session_id}:hashes"
+    redis_client.sadd(key, file_hash)
+
+
 def add_file_to_session(session_id, file_info):
     """Add a file to session's file list in Redis"""
     files = get_user_files(session_id)
     files.append(file_info)
     key = get_session_files_key(session_id)
     redis_client.set(key, json.dumps(files))
+    # Also add to hash set for fast duplicate checking
+    add_file_hash_to_session(session_id, file_info['hash'])
 
 
 def remove_file_from_session(session_id, file_id):
     """Remove a file from session's file list in Redis"""
     files = get_user_files(session_id)
+    # Find the file to get its hash before removing
+    file_hash = None
+    for f in files:
+        if f['id'] == file_id:
+            file_hash = f.get('hash')
+            break
+
     files = [f for f in files if f['id'] != file_id]
     key = get_session_files_key(session_id)
     if files:
         redis_client.set(key, json.dumps(files))
     else:
         redis_client.delete(key)
+
+    # Remove hash from the set
+    if file_hash:
+        hash_set_key = f"files:session:{session_id}:hashes"
+        redis_client.srem(hash_set_key, file_hash)
     return files
 
 
@@ -126,14 +159,14 @@ def get_session_id():
 
 
 def calculate_file_hash(file_stream):
-    """Calculate SHA-256 hash of file contents"""
-    sha256_hash = hashlib.sha256()
-    # Read file in chunks to handle large files efficiently
-    for byte_block in iter(lambda: file_stream.read(4096), b""):
-        sha256_hash.update(byte_block)
+    """Calculate MD5 hash of file contents (faster than SHA-256 for deduplication)"""
+    md5_hash = hashlib.md5()
+    # Read file in larger chunks for better performance
+    for byte_block in iter(lambda: file_stream.read(65536), b""):
+        md5_hash.update(byte_block)
     # Reset file pointer to beginning
     file_stream.seek(0)
-    return sha256_hash.hexdigest()
+    return md5_hash.hexdigest()
 
 
 # ============================================================================
@@ -167,17 +200,19 @@ def upload_file():
 
     # Track file for this session
     session_id = get_session_id()
-    user_files = get_user_files(session_id)
 
-    # Check if this user already uploaded this exact file
-    for existing_file in user_files:
-        if existing_file.get('hash') == file_hash:
-            return jsonify({
-                'success': True,
-                'file': existing_file,
-                'duplicate': True,
-                'message': 'You have already uploaded this file'
-            })
+    # Fast check if this user already uploaded this exact file (using Redis SET)
+    if has_file_hash(session_id, file_hash):
+        # Find the existing file info
+        user_files = get_user_files(session_id)
+        for existing_file in user_files:
+            if existing_file.get('hash') == file_hash:
+                return jsonify({
+                    'success': True,
+                    'file': existing_file,
+                    'duplicate': True,
+                    'message': 'You have already uploaded this file'
+                })
 
     # Check if this file exists globally (uploaded by another user)
     stored_name = get_file_hash_mapping(file_hash)
