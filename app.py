@@ -148,7 +148,14 @@ def delete_file_hash_mapping(file_hash):
 def get_all_session_ids():
     """Get all session IDs that have uploaded files"""
     keys = redis_client.keys("files:session:*")
-    return [key.replace("files:session:", "") for key in keys]
+    # Filter out hash sets (keys ending with :hashes) and extract session IDs
+    session_ids = set()
+    for key in keys:
+        if not key.endswith(':hashes'):
+            # Extract session ID from "files:session:SESSION_ID"
+            session_id = key.replace("files:session:", "")
+            session_ids.add(session_id)
+    return list(session_ids)
 
 
 # ============================================================================
