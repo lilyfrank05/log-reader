@@ -3,6 +3,8 @@ import os
 import uuid
 import hashlib
 import json
+import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, session, send_from_directory
@@ -11,6 +13,13 @@ from werkzeug.utils import secure_filename
 from apscheduler.schedulers.background import BackgroundScheduler
 from dateutil import parser as date_parser
 import redis
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import custom modules
 from utils import read_last_lines, parse_timestamp
@@ -182,6 +191,9 @@ def index():
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Handle file upload"""
+    upload_start = time.time()
+    session_id = get_session_id()
+
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
 
@@ -193,40 +205,56 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Only .log files are allowed'}), 400
 
+    original_filename = secure_filename(file.filename)
+    file_size = file.content_length or 0
+
+    logger.info(f"[UPLOAD START] Session: {session_id[:8]}... | File: {original_filename} | Size: {file_size / 1024 / 1024:.2f}MB")
+
     # Calculate file hash to check for duplicates
+    hash_start = time.time()
     file_hash = calculate_file_hash(file.stream)
     file.stream.seek(0)  # Reset file pointer after hashing
-    original_filename = secure_filename(file.filename)
-
-    # Track file for this session
-    session_id = get_session_id()
+    hash_time = time.time() - hash_start
+    logger.info(f"[HASH COMPLETE] Session: {session_id[:8]}... | Hash: {file_hash[:12]}... | Time: {hash_time:.2f}s")
 
     # Fast check if this user already uploaded this exact file (using Redis SET)
+    dup_check_start = time.time()
     if has_file_hash(session_id, file_hash):
         # Find the existing file info
         user_files = get_user_files(session_id)
         for existing_file in user_files:
             if existing_file.get('hash') == file_hash:
+                dup_check_time = time.time() - dup_check_start
+                total_time = time.time() - upload_start
+                logger.info(f"[DUPLICATE DETECTED] Session: {session_id[:8]}... | File: {original_filename} | Dup check: {dup_check_time:.2f}s | Total: {total_time:.2f}s")
                 return jsonify({
                     'success': True,
                     'file': existing_file,
                     'duplicate': True,
                     'message': 'You have already uploaded this file'
                 })
+    dup_check_time = time.time() - dup_check_start
+    logger.info(f"[DUP CHECK] Session: {session_id[:8]}... | Time: {dup_check_time:.3f}s | Result: Not duplicate")
 
     # Check if this file exists globally (uploaded by another user)
+    global_check_start = time.time()
     stored_name = get_file_hash_mapping(file_hash)
     if stored_name:
         # Reuse the existing file, but create a new reference for this user
-        pass
+        logger.info(f"[GLOBAL REUSE] Session: {session_id[:8]}... | Reusing stored file: {stored_name}")
     else:
         # New file - save it and add to global hash map
+        save_start = time.time()
         stored_name = f"{uuid.uuid4()}_{original_filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_name)
         file.save(file_path)
+        save_time = time.time() - save_start
+        logger.info(f"[FILE SAVE] Session: {session_id[:8]}... | Saved as: {stored_name} | Time: {save_time:.2f}s")
         set_file_hash_mapping(file_hash, stored_name)
+    global_check_time = time.time() - global_check_start
 
     # Create a unique file reference for this user
+    redis_start = time.time()
     file_info = {
         'id': str(uuid.uuid4()),
         'original_name': original_filename,
@@ -235,6 +263,11 @@ def upload_file():
         'upload_time': datetime.now().isoformat()
     }
     add_file_to_session(session_id, file_info)
+    redis_time = time.time() - redis_start
+
+    total_time = time.time() - upload_start
+    logger.info(f"[UPLOAD COMPLETE] Session: {session_id[:8]}... | File: {original_filename} | " +
+                f"Hash: {hash_time:.2f}s | Global: {global_check_time:.2f}s | Redis: {redis_time:.3f}s | Total: {total_time:.2f}s")
 
     return jsonify({
         'success': True,
