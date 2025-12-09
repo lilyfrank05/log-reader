@@ -272,15 +272,19 @@ def upload_file():
     return jsonify({
         'success': True,
         'file': file_info,
-        'duplicate': False
+        'duplicate': False,
+        'server_time': total_time
     })
 
 
 @app.route('/api/files', methods=['GET'])
 def list_files():
     """List all files uploaded by this session"""
+    start = time.time()
     session_id = get_session_id()
     files = get_user_files(session_id)
+    elapsed = time.time() - start
+    logger.info(f"[LIST FILES] Session: {session_id[:8]}... | Count: {len(files)} | Time: {elapsed:.3f}s")
     return jsonify({'files': files})
 
 

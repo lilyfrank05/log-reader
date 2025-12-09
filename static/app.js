@@ -168,17 +168,24 @@ uploadBtn.addEventListener('click', async () => {
     }, 300);
 
     try {
+        const uploadStart = Date.now();
         const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
         });
+
+        const fetchTime = Date.now() - uploadStart;
+        console.log(`[CLIENT] Fetch completed in ${fetchTime}ms`);
 
         // Complete upload phase
         clearInterval(progressInterval);
         progressFill.style.width = '100%';
         progressText.textContent = 'Finalizing...';
 
+        const parseStart = Date.now();
         const data = await response.json();
+        const parseTime = Date.now() - parseStart;
+        console.log(`[CLIENT] JSON parse in ${parseTime}ms | Server time: ${data.server_time?.toFixed(2)}s`);
 
         if (response.ok) {
             // Complete progress
@@ -186,7 +193,13 @@ uploadBtn.addEventListener('click', async () => {
             progressText.textContent = 'Loading file list...';
 
             // Load files and show success after
+            const listStart = Date.now();
             await loadFiles();
+            const listTime = Date.now() - listStart;
+            console.log(`[CLIENT] File list loaded in ${listTime}ms`);
+
+            const totalTime = Date.now() - uploadStart;
+            console.log(`[CLIENT] Total upload flow: ${totalTime}ms`);
 
             setTimeout(() => {
                 uploadProgress.style.display = 'none';
