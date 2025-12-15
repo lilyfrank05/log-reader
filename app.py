@@ -5,6 +5,8 @@ import hashlib
 import json
 import logging
 import time
+import zipfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, session, send_from_directory
@@ -163,8 +165,80 @@ def get_all_session_ids():
 # ============================================================================
 
 def allowed_file(filename):
-    """Check if file has .log extension"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() == 'log'
+    """Check if file has .log or .zip extension"""
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in ['log', 'zip']
+
+
+def is_safe_path(basedir, path, follow_symlinks=True):
+    """Check if a path is safe (prevent zip slip attacks)"""
+    # Resolve the absolute path
+    if follow_symlinks:
+        matchpath = os.path.realpath(path)
+    else:
+        matchpath = os.path.abspath(path)
+    return basedir == os.path.commonpath((basedir, matchpath))
+
+
+def extract_and_validate_zip(zip_file, max_size=500*1024*1024):
+    """
+    Securely extract and validate zip file containing exactly ONE .log file
+    Returns: tuple (filename, content) for the log file
+    Raises: ValueError if validation fails or if there's not exactly one .log file
+    """
+    log_files = []
+    total_size = 0
+
+    try:
+        with zipfile.ZipFile(zip_file, 'r') as zf:
+            # Check for zip bombs and collect .log files
+            for info in zf.infolist():
+                # Skip directories
+                if info.is_dir():
+                    continue
+
+                # Only count .log files for validation
+                if info.filename.lower().endswith('.log'):
+                    total_size += info.file_size
+                    if total_size > max_size:
+                        raise ValueError(f"Zip file contents too large (max {max_size/1024/1024:.0f}MB uncompressed)")
+
+                    # Check for path traversal attempts (zip slip)
+                    if info.filename.startswith('/') or '..' in info.filename:
+                        raise ValueError(f"Suspicious path detected in zip: {info.filename}")
+
+                    # Check individual file size
+                    if info.file_size > max_size:
+                        raise ValueError(f"Log file too large in zip (max {max_size/1024/1024:.0f}MB)")
+
+                    # Extract file content
+                    with zf.open(info) as f:
+                        content = f.read()
+                        # Get just the filename, not the full path
+                        filename = os.path.basename(info.filename)
+                        log_files.append((filename, content))
+                else:
+                    # Ignore other files silently
+                    logger.info(f"Ignoring non-.log file in zip: {info.filename}")
+
+            if not log_files:
+                raise ValueError("No .log file found in zip archive. Please include exactly one .log file.")
+
+            if len(log_files) > 1:
+                raise ValueError(f"Zip contains {len(log_files)} .log files. Please include only ONE .log file in the zip.")
+
+            logger.info(f"Successfully extracted 1 .log file from zip: {log_files[0][0]}")
+            return log_files[0]  # Return single tuple, not list
+
+    except zipfile.BadZipFile:
+        raise ValueError("Invalid or corrupted zip file")
+    except ValueError:
+        raise  # Re-raise our custom validation errors
+    except Exception as e:
+        logger.error(f"Error extracting zip: {e}")
+        raise ValueError(f"Failed to extract zip file: {str(e)}")
 
 
 def get_session_id():
@@ -195,32 +269,12 @@ def index():
     return send_from_directory('static', 'index.html')
 
 
-@app.route('/api/upload', methods=['POST'])
-def upload_file():
-    """Handle file upload"""
-    upload_start = time.time()
-    session_id = get_session_id()
-
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-
-    file = request.files['file']
-
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'Only .log files are allowed'}), 400
-
-    original_filename = secure_filename(file.filename)
-    file_size = file.content_length or 0
-
-    logger.info(f"[UPLOAD START] Session: {session_id[:8]}... | File: {original_filename} | Size: {file_size / 1024 / 1024:.2f}MB")
-
+def process_log_file(session_id, filename, file_stream, upload_start):
+    """Process a single .log file (extracted from zip or uploaded directly)"""
     # Calculate file hash to check for duplicates
     hash_start = time.time()
-    file_hash = calculate_file_hash(file.stream)
-    file.stream.seek(0)  # Reset file pointer after hashing
+    file_hash = calculate_file_hash(file_stream)
+    file_stream.seek(0)  # Reset file pointer after hashing
     hash_time = time.time() - hash_start
     logger.info(f"[HASH COMPLETE] Session: {session_id[:8]}... | Hash: {file_hash[:12]}... | Time: {hash_time:.2f}s")
 
@@ -232,14 +286,8 @@ def upload_file():
         for existing_file in user_files:
             if existing_file.get('hash') == file_hash:
                 dup_check_time = time.time() - dup_check_start
-                total_time = time.time() - upload_start
-                logger.info(f"[DUPLICATE DETECTED] Session: {session_id[:8]}... | File: {original_filename} | Dup check: {dup_check_time:.2f}s | Total: {total_time:.2f}s")
-                return jsonify({
-                    'success': True,
-                    'file': existing_file,
-                    'duplicate': True,
-                    'message': 'You have already uploaded this file'
-                })
+                logger.info(f"[DUPLICATE] Session: {session_id[:8]}... | File: {filename} | Time: {dup_check_time:.2f}s")
+                return existing_file, True
     dup_check_time = time.time() - dup_check_start
     logger.info(f"[DUP CHECK] Session: {session_id[:8]}... | Time: {dup_check_time:.3f}s | Result: Not duplicate")
 
@@ -252,9 +300,13 @@ def upload_file():
     else:
         # New file - save it and add to global hash map
         save_start = time.time()
-        stored_name = f"{uuid.uuid4()}_{original_filename}"
+        stored_name = f"{uuid.uuid4()}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_name)
-        file.save(file_path)
+
+        # Write content to file
+        with open(file_path, 'wb') as f:
+            f.write(file_stream.read())
+
         save_time = time.time() - save_start
         logger.info(f"[FILE SAVE] Session: {session_id[:8]}... | Saved as: {stored_name} | Time: {save_time:.2f}s")
         set_file_hash_mapping(file_hash, stored_name)
@@ -264,7 +316,7 @@ def upload_file():
     redis_start = time.time()
     file_info = {
         'id': str(uuid.uuid4()),
-        'original_name': original_filename,
+        'original_name': filename,
         'stored_name': stored_name,
         'hash': file_hash,
         'upload_time': datetime.now().isoformat()
@@ -273,15 +325,77 @@ def upload_file():
     redis_time = time.time() - redis_start
 
     total_time = time.time() - upload_start
-    logger.info(f"[UPLOAD COMPLETE] Session: {session_id[:8]}... | File: {original_filename} | " +
+    logger.info(f"[UPLOAD COMPLETE] Session: {session_id[:8]}... | File: {filename} | " +
                 f"Hash: {hash_time:.2f}s | Global: {global_check_time:.2f}s | Redis: {redis_time:.3f}s | Total: {total_time:.2f}s")
 
-    return jsonify({
-        'success': True,
-        'file': file_info,
-        'duplicate': False,
-        'server_time': total_time
-    })
+    return file_info, False
+
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """Handle file upload (.log or .zip containing .log files)"""
+    upload_start = time.time()
+    session_id = get_session_id()
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Only .log or .zip files are allowed'}), 400
+
+    original_filename = secure_filename(file.filename)
+    file_size = file.content_length or 0
+
+    logger.info(f"[UPLOAD START] Session: {session_id[:8]}... | File: {original_filename} | Size: {file_size / 1024 / 1024:.2f}MB")
+
+    # Check if it's a zip file
+    if original_filename.lower().endswith('.zip'):
+        try:
+            # Extract and validate zip contents (returns single file tuple)
+            from io import BytesIO
+            # Read the uploaded file into BytesIO (zipfile needs seekable stream)
+            zip_data = BytesIO(file.read())
+            log_filename, log_content = extract_and_validate_zip(zip_data)
+
+            # Create a BytesIO object from the extracted content
+            log_stream = BytesIO(log_content)
+
+            # Process the extracted log file (hash is calculated on .log content, not .zip)
+            file_info, is_duplicate = process_log_file(session_id, log_filename, log_stream, upload_start)
+
+            total_time = time.time() - upload_start
+            logger.info(f"[ZIP COMPLETE] Session: {session_id[:8]}... | Extracted: {log_filename} | Total: {total_time:.2f}s")
+
+            return jsonify({
+                'success': True,
+                'file': file_info,
+                'duplicate': is_duplicate,
+                'is_zip': True,
+                'message': f'Successfully extracted and uploaded {log_filename} from zip' if not is_duplicate else 'You have already uploaded this file',
+                'server_time': total_time
+            })
+
+        except ValueError as e:
+            logger.error(f"[ZIP ERROR] Session: {session_id[:8]}... | Error: {str(e)}")
+            return jsonify({'error': str(e)}), 400
+
+    else:
+        # Handle regular .log file
+        file_info, is_duplicate = process_log_file(session_id, original_filename, file.stream, upload_start)
+        total_time = time.time() - upload_start
+
+        return jsonify({
+            'success': True,
+            'file': file_info,
+            'duplicate': is_duplicate,
+            'message': 'You have already uploaded this file' if is_duplicate else 'File uploaded successfully',
+            'server_time': total_time
+        })
 
 
 @app.route('/api/files', methods=['GET'])

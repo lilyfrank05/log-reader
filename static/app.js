@@ -204,8 +204,13 @@ uploadBtn.addEventListener('click', async () => {
             setTimeout(() => {
                 uploadProgress.style.display = 'none';
                 uploadMessage.style.display = 'block';
-                if (data.duplicate) {
-                    showMessage(uploadMessage, 'You have already uploaded this file', 'info');
+
+                // Handle different response types
+                if (data.is_zip && !data.duplicate) {
+                    // Zip file extracted and uploaded
+                    showMessage(uploadMessage, data.message || 'File extracted from zip and uploaded successfully!', 'success');
+                } else if (data.duplicate) {
+                    showMessage(uploadMessage, data.message || 'You have already uploaded this file', 'info');
                 } else {
                     showMessage(uploadMessage, 'File uploaded successfully!', 'success');
                 }
