@@ -7,6 +7,7 @@ import logging
 import time
 import zipfile
 import tempfile
+import re
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, session, send_from_directory
@@ -259,6 +260,57 @@ def calculate_file_hash(file_stream):
     return md5_hash.hexdigest()
 
 
+def extract_mid_tid(file_path):
+    """
+    Extract Mid and Tid from log file by searching for patterns like:
+    'Mid: 534930050026642, Tid: PX041488' or
+    '"mid":"534930040003619"' (JSON format)
+
+    Searches the entire file until both values are found or EOF is reached.
+    Returns: dict with 'mid' and 'tid' keys (None if not found)
+    """
+    # Match both "Mid: 123" and "mid":"123" formats
+    mid_pattern = re.compile(r'["\']?mid["\']?\s*[:=]\s*["\']?(\d+)', re.IGNORECASE)
+    # Match both "Tid: PX123" and "tid":"PX123" formats
+    tid_pattern = re.compile(r'["\']?tid["\']?\s*[:=]\s*["\']?([A-Za-z0-9]+)', re.IGNORECASE)
+
+    result = {'mid': None, 'tid': None}
+
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for i, line in enumerate(f):
+                # Search for Mid
+                if result['mid'] is None:
+                    mid_match = mid_pattern.search(line)
+                    if mid_match:
+                        result['mid'] = mid_match.group(1)
+
+                # Search for Tid
+                if result['tid'] is None:
+                    tid_match = tid_pattern.search(line)
+                    if tid_match:
+                        result['tid'] = tid_match.group(1)
+
+                # Stop early if both found
+                if result['mid'] and result['tid']:
+                    logger.info(f"[MID/TID] Found at line {i+1}: Mid={result['mid']}, Tid={result['tid']}")
+                    break
+
+                # Log progress every 10000 lines for very large files
+                if i > 0 and i % 10000 == 0 and (result['mid'] is None or result['tid'] is None):
+                    logger.debug(f"[MID/TID] Still searching... line {i}")
+
+        if result['mid'] or result['tid']:
+            logger.info(f"[MID/TID] Extracted from {file_path}: Mid={result['mid']}, Tid={result['tid']}")
+        else:
+            logger.info(f"[MID/TID] Not found in {file_path}")
+
+    except Exception as e:
+        logger.warning(f"[MID/TID] Error extracting from {file_path}: {e}")
+
+    return result
+
+
 # ============================================================================
 # Routes
 # ============================================================================
@@ -294,6 +346,8 @@ def process_log_file(session_id, filename, file_stream, upload_start):
     # Check if this file exists globally (uploaded by another user)
     global_check_start = time.time()
     stored_name = get_file_hash_mapping(file_hash)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], stored_name) if stored_name else None
+
     if stored_name:
         # Reuse the existing file, but create a new reference for this user
         logger.info(f"[GLOBAL REUSE] Session: {session_id[:8]}... | Reusing stored file: {stored_name}")
@@ -312,6 +366,12 @@ def process_log_file(session_id, filename, file_stream, upload_start):
         set_file_hash_mapping(file_hash, stored_name)
     global_check_time = time.time() - global_check_start
 
+    # Extract Mid and Tid from the log file (only for new uploads, not duplicates)
+    mid_tid_start = time.time()
+    mid_tid = extract_mid_tid(file_path)
+    mid_tid_time = time.time() - mid_tid_start
+    logger.info(f"[MID/TID] Session: {session_id[:8]}... | Time: {mid_tid_time:.3f}s | Mid: {mid_tid['mid']}, Tid: {mid_tid['tid']}")
+
     # Create a unique file reference for this user
     redis_start = time.time()
     file_info = {
@@ -319,7 +379,9 @@ def process_log_file(session_id, filename, file_stream, upload_start):
         'original_name': filename,
         'stored_name': stored_name,
         'hash': file_hash,
-        'upload_time': datetime.now().isoformat()
+        'upload_time': datetime.now().isoformat(),
+        'mid': mid_tid['mid'],
+        'tid': mid_tid['tid']
     }
     add_file_to_session(session_id, file_info)
     redis_time = time.time() - redis_start
