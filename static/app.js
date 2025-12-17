@@ -253,13 +253,27 @@ function renderFiles() {
         return;
     }
 
-    container.innerHTML = currentFiles.map(file => `
-        <div class="file-item ${file.id === currentFileId ? 'active' : ''}"
-             onclick="selectFile('${file.id}')">
-            <span class="file-name">${file.original_name}</span>
-            <button class="delete-btn" onclick="deleteFile(event, '${file.id}')">Delete</button>
-        </div>
-    `).join('');
+    container.innerHTML = currentFiles.map(file => {
+        // Build Mid/Tid display
+        let midTidText = '';
+        if (file.mid || file.tid) {
+            const parts = [];
+            if (file.mid) parts.push(`Mid: ${file.mid}`);
+            if (file.tid) parts.push(`Tid: ${file.tid}`);
+            midTidText = `<span class="file-mid-tid">${parts.join(', ')}</span>`;
+        }
+
+        return `
+            <div class="file-item ${file.id === currentFileId ? 'active' : ''}"
+                 onclick="selectFile('${file.id}')">
+                <div class="file-info">
+                    <span class="file-name">${file.original_name}</span>
+                    ${midTidText}
+                </div>
+                <button class="delete-btn" onclick="deleteFile(event, '${file.id}')">Delete</button>
+            </div>
+        `;
+    }).join('');
 }
 
 // Select a file to view
