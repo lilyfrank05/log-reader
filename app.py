@@ -270,9 +270,9 @@ def extract_mid_tid(file_path):
     Returns: dict with 'mid' and 'tid' keys (None if not found)
     """
     # Match both "Mid: 123" and "mid":"123" formats (with word boundary to avoid dmid, etc.)
-    mid_pattern = re.compile(r'\b["\']?mid["\']?\s*[:=]\s*["\']?(\d+)', re.IGNORECASE)
+    mid_pattern = re.compile(r'\b["\']?mid["\']?\s*:\s*["\']?(\d+)', re.IGNORECASE)
     # Match both "Tid: PX123" and "tid":"PX123" formats (with word boundary)
-    tid_pattern = re.compile(r'\b["\']?tid["\']?\s*[:=]\s*["\']?([A-Za-z0-9]+)', re.IGNORECASE)
+    tid_pattern = re.compile(r'\b["\']?tid["\']?\s*:\s*["\']?([A-Za-z0-9]+)', re.IGNORECASE)
 
     result = {'mid': None, 'tid': None}
 
