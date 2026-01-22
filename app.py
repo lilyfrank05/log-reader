@@ -166,11 +166,17 @@ def get_all_session_ids():
 # ============================================================================
 
 def allowed_file(filename):
-    """Check if file has .log or .zip extension"""
+    """Check if file has .log, .log_1, or .zip extension"""
     if '.' not in filename:
         return False
     ext = filename.rsplit('.', 1)[1].lower()
-    return ext in ['log', 'zip']
+    return ext in ['log', 'log_1', 'zip']
+
+
+def is_log_file(filename):
+    """Check if filename is a log file (.log or .log_1)"""
+    lower_name = filename.lower()
+    return lower_name.endswith('.log') or lower_name.endswith('.log_1')
 
 
 def is_safe_path(basedir, path, follow_symlinks=True):
@@ -200,8 +206,8 @@ def extract_and_validate_zip(zip_file, max_size=500*1024*1024):
                 if info.is_dir():
                     continue
 
-                # Only count .log files for validation
-                if info.filename.lower().endswith('.log'):
+                # Only count .log and .log_1 files for validation
+                if is_log_file(info.filename):
                     total_size += info.file_size
                     if total_size > max_size:
                         raise ValueError(f"Zip file contents too large (max {max_size/1024/1024:.0f}MB uncompressed)")
@@ -222,13 +228,13 @@ def extract_and_validate_zip(zip_file, max_size=500*1024*1024):
                         log_files.append((filename, content))
                 else:
                     # Ignore other files silently
-                    logger.info(f"Ignoring non-.log file in zip: {info.filename}")
+                    logger.info(f"Ignoring non-log file in zip: {info.filename}")
 
             if not log_files:
-                raise ValueError("No .log file found in zip archive. Please include exactly one .log file.")
+                raise ValueError("No log file found in zip archive. Please include exactly one .log or .log_1 file.")
 
             if len(log_files) > 1:
-                raise ValueError(f"Zip contains {len(log_files)} .log files. Please include only ONE .log file in the zip.")
+                raise ValueError(f"Zip contains {len(log_files)} log files. Please include only ONE log file in the zip.")
 
             logger.info(f"Successfully extracted 1 .log file from zip: {log_files[0][0]}")
             return log_files[0]  # Return single tuple, not list
@@ -408,7 +414,7 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
 
     if not allowed_file(file.filename):
-        return jsonify({'error': 'Only .log or .zip files are allowed'}), 400
+        return jsonify({'error': 'Only .log, .log_1, or .zip files are allowed'}), 400
 
     original_filename = secure_filename(file.filename)
     file_size = file.content_length or 0
