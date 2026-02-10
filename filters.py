@@ -62,12 +62,6 @@ def apply_filters(line, filters, logic='AND', case_sensitive=True):
     Date filters always use AND logic.
     Include/exclude filters use the specified logic (AND/OR).
 
-    OPTIMIZED VERSION:
-    - Pre-computes lowercase line once if needed
-    - Pre-parses timestamp once if needed
-    - Uses short-circuit evaluation
-    - Avoids redundant filter separation
-
     filters: list of filter configs
     logic: 'AND' | 'OR' - applies only to include/exclude filters
     case_sensitive: boolean, whether string matching is case sensitive
@@ -120,20 +114,105 @@ def apply_filters(line, filters, logic='AND', case_sensitive=True):
     return True
 
 
+def compile_filter_plan(filters, logic='AND', case_sensitive=True):
+    """
+    Compile filter config dicts into an optimized line-matcher closure.
+    Call once per request/stream, then invoke the returned function per line.
+
+    Eliminates per-line overhead:
+    - No dict .get() / [] lookups
+    - No re-splitting date vs content filters
+    - No re-lowercasing filter values
+    - No any() scan for date filter presence
+
+    Returns a callable (line -> bool), or None if no filters.
+    """
+    if not filters:
+        return None
+
+    # Pre-extract date filter bounds as (start, end) tuples
+    date_bounds = []
+    # Pre-extract content checks: (value, is_include) with values already lowered
+    include_values = []
+    exclude_values = []
+    content_checks = []  # [(value, is_include)] for OR mode
+
+    for f in filters:
+        ftype = f.get('type')
+        if ftype == 'date':
+            date_bounds.append((f.get('start_date'), f.get('end_date')))
+        elif ftype == 'include':
+            val = f['value']
+            if not case_sensitive:
+                val = val.lower()
+            include_values.append(val)
+            content_checks.append((val, True))
+        elif ftype == 'exclude':
+            val = f['value']
+            if not case_sensitive:
+                val = val.lower()
+            exclude_values.append(val)
+            content_checks.append((val, False))
+
+    has_dates = bool(date_bounds)
+    has_content = bool(include_values) or bool(exclude_values)
+    need_lower = not case_sensitive and has_content
+    use_and = logic == 'AND'
+
+    def match_line(line):
+        # Date filters (always AND logic)
+        if has_dates:
+            ts = parse_timestamp(line)
+            if ts is None:
+                return False
+            for start, end in date_bounds:
+                if start and ts < start:
+                    return False
+                if end and ts > end:
+                    return False
+
+        if not has_content:
+            return True
+
+        search_line = line.lower() if need_lower else line
+
+        if use_and:
+            for val in include_values:
+                if val not in search_line:
+                    return False
+            for val in exclude_values:
+                if val in search_line:
+                    return False
+        else:
+            # OR: at least one content filter must pass
+            for val, is_include in content_checks:
+                if is_include == (val in search_line):
+                    break
+            else:
+                return False
+
+        return True
+
+    return match_line
+
+
 def stream_filtered_logs(file_path, filters=None, logic='AND', case_sensitive=True, chunk_size=1000):
     """
     Memory-efficient log file reading with filtering.
     Yields lines in chunks to avoid loading entire file into memory.
     Returns tuples of (line_number, line_content)
     """
+    # Compile filter plan once for the entire stream
+    matcher = compile_filter_plan(filters, logic, case_sensitive)
+
     lines_buffer = []
 
     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
         for line_number, line in enumerate(f, start=1):
             line = line.rstrip('\n\r')
 
-            # Apply filters if provided
-            if filters and not apply_filters(line, filters, logic, case_sensitive):
+            # Apply compiled filter (None means no filters)
+            if matcher and not matcher(line):
                 continue
 
             lines_buffer.append({'line_number': line_number, 'content': line})
