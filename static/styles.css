@@ -34,6 +34,39 @@ h1 {
     border-bottom: 1px solid #e0e0e0;
 }
 
+.drop-zone {
+    border: 2px dashed #bdc3c7;
+    border-radius: 8px;
+    padding: 24px 20px;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: default;
+}
+
+.drop-zone.drag-over {
+    border-color: #3498db;
+    background: #eaf4fd;
+}
+
+.drop-zone-hint {
+    color: #7f8c8d;
+    font-size: 14px;
+    margin-bottom: 14px;
+    pointer-events: none;
+}
+
+.drop-zone.drag-over .drop-zone-hint {
+    color: #2980b9;
+}
+
+.drop-zone-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .file-input-wrapper {
     display: inline-block;
     position: relative;
