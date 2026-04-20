@@ -129,30 +129,33 @@ uploadBtn.addEventListener('click', async () => {
 
 // Drag and drop handlers
 const dropZone = document.getElementById('dropZone');
+let dragCounter = 0;
 
 dropZone.addEventListener('dragenter', (e) => {
     e.preventDefault();
+    dragCounter++;
     dropZone.classList.add('drag-over');
 });
 
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    dropZone.classList.add('drag-over');
 });
 
-dropZone.addEventListener('dragleave', (e) => {
-    if (!dropZone.contains(e.relatedTarget)) {
+dropZone.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter === 0) {
         dropZone.classList.remove('drag-over');
     }
 });
 
-dropZone.addEventListener('drop', async (e) => {
+dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
+    dragCounter = 0;
     dropZone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
     if (!file) return;
     selectedFileName.textContent = file.name;
-    await uploadFile(file);
+    uploadFile(file);
 });
 
 async function uploadFile(file) {
