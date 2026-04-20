@@ -124,7 +124,38 @@ fileInput.addEventListener('change', (e) => {
 uploadBtn.addEventListener('click', async () => {
     const file = fileInput.files[0];
     if (!file) return;
+    await uploadFile(file);
+});
 
+// Drag and drop handlers
+const dropZone = document.getElementById('dropZone');
+
+dropZone.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', (e) => {
+    if (!dropZone.contains(e.relatedTarget)) {
+        dropZone.classList.remove('drag-over');
+    }
+});
+
+dropZone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    selectedFileName.textContent = file.name;
+    await uploadFile(file);
+});
+
+async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -188,18 +219,15 @@ uploadBtn.addEventListener('click', async () => {
         console.log(`[CLIENT] JSON parse in ${parseTime}ms | Server time: ${data.server_time?.toFixed(2)}s`);
 
         if (response.ok) {
-            // Complete progress
             progressFill.style.width = '100%';
-            progressText.textContent = 'Loading file list...';
-
-            // Load files and show success after
-            const listStart = Date.now();
-            await loadFiles();
-            const listTime = Date.now() - listStart;
-            console.log(`[CLIENT] File list loaded in ${listTime}ms`);
+            progressText.textContent = 'Upload complete!';
 
             const totalTime = Date.now() - uploadStart;
             console.log(`[CLIENT] Total upload flow: ${totalTime}ms`);
+
+            // Refresh file list in the background so the current file
+            // selection and log view are not interrupted.
+            loadFiles();
 
             setTimeout(() => {
                 uploadProgress.style.display = 'none';
@@ -207,7 +235,6 @@ uploadBtn.addEventListener('click', async () => {
 
                 // Handle different response types
                 if (data.is_zip && !data.duplicate) {
-                    // Zip file extracted and uploaded
                     showMessage(uploadMessage, data.message || 'File extracted from zip and uploaded successfully!', 'success');
                 } else if (data.duplicate) {
                     showMessage(uploadMessage, data.message || 'You have already uploaded this file', 'info');
@@ -230,7 +257,7 @@ uploadBtn.addEventListener('click', async () => {
         showMessage(uploadMessage, 'Upload failed: ' + error.message, 'error');
         uploadBtn.disabled = false;
     }
-});
+}
 
 // Load files for current session
 async function loadFiles() {
