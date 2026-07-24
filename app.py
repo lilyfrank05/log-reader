@@ -33,7 +33,7 @@ from cleanup import cleanup_old_files, daily_full_cleanup
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30MB max file size
 app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
 
 # Configure Redis session
@@ -189,7 +189,7 @@ def is_safe_path(basedir, path, follow_symlinks=True):
     return basedir == os.path.commonpath((basedir, matchpath))
 
 
-def extract_and_validate_zip(zip_file, max_size=500*1024*1024):
+def extract_and_validate_zip(zip_file, max_size=30*1024*1024):
     """
     Securely extract and validate zip file containing exactly ONE .log file
     Returns: tuple (filename, content) for the log file
