@@ -2,6 +2,12 @@
 from pathlib import Path
 from datetime import datetime
 import json
+import time
+
+# Files newer than this are never swept, even if not yet referenced in Redis.
+# Protects files that are mid-upload (written to disk before their Redis
+# reference is registered) from being deleted out from under the request.
+MIN_FILE_AGE_SECONDS = 600
 
 
 def get_session_files_key(session_id):
@@ -50,11 +56,14 @@ def cleanup_old_files(upload_folder, redis_client):
             referenced_files.add(file_info['stored_name'])
 
     # Delete unreferenced physical files (.log and .log_1)
+    now = time.time()
     for pattern in ['*.log', '*.log_1']:
         for file_path in upload_dir.glob(pattern):
             stored_name = file_path.name
             if stored_name not in referenced_files:
                 try:
+                    if now - file_path.stat().st_mtime < MIN_FILE_AGE_SECONDS:
+                        continue
                     file_path.unlink()
                     # Remove from global hash map - scan for the hash key with this stored_name
                     hash_keys = redis_client.keys("files:hash:*")

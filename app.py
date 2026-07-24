@@ -765,25 +765,54 @@ def get_logs(file_id):
 # ============================================================================
 # Scheduler Setup
 # ============================================================================
+# Gunicorn runs multiple worker processes, each importing this module, so
+# without coordination every worker would start its own BackgroundScheduler
+# and the "hourly" cleanup would actually run several times an hour. Use a
+# Redis lock so only one worker process (the "leader") runs the jobs.
+
+SCHEDULER_LOCK_KEY = "scheduler:leader_lock"
+SCHEDULER_LOCK_TTL = 90  # seconds
+scheduler_worker_id = str(uuid.uuid4())
+
+
+def _try_become_scheduler_leader():
+    return redis_client.set(SCHEDULER_LOCK_KEY, scheduler_worker_id, nx=True, ex=SCHEDULER_LOCK_TTL)
+
+
+def _renew_scheduler_leadership():
+    # Only extend if we still hold the lock, so a lock that expired and was
+    # taken over by another worker isn't clobbered back to this one.
+    if redis_client.get(SCHEDULER_LOCK_KEY) == scheduler_worker_id:
+        redis_client.expire(SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_TTL)
+
 
 scheduler = BackgroundScheduler()
 
-# Daily full cleanup at 2 AM
-scheduler.add_job(
-    func=lambda: daily_full_cleanup(app.config['UPLOAD_FOLDER'], redis_client),
-    trigger='cron',
-    hour=2,
-    minute=0
-)
+if _try_become_scheduler_leader():
+    # Daily full cleanup at 2 AM
+    scheduler.add_job(
+        func=lambda: daily_full_cleanup(app.config['UPLOAD_FOLDER'], redis_client),
+        trigger='cron',
+        hour=2,
+        minute=0
+    )
 
-# Hourly cleanup of unreferenced files
-scheduler.add_job(
-    func=lambda: cleanup_old_files(app.config['UPLOAD_FOLDER'], redis_client),
-    trigger="interval",
-    hours=1
-)
+    # Hourly cleanup of unreferenced files
+    scheduler.add_job(
+        func=lambda: cleanup_old_files(app.config['UPLOAD_FOLDER'], redis_client),
+        trigger="interval",
+        hours=1
+    )
 
-scheduler.start()
+    # Keep the leader lock alive so another worker doesn't take over while
+    # this one is still running
+    scheduler.add_job(
+        func=_renew_scheduler_leadership,
+        trigger="interval",
+        seconds=30
+    )
+
+    scheduler.start()
 
 
 # ============================================================================
