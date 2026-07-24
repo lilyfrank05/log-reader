@@ -299,7 +299,7 @@ Presets are loaded fresh each time you reload the page. To update presets:
 ### Application Settings
 
 - **Upload Folder**: `uploads/` (created automatically, persisted in Docker volume)
-- **Max File Size**: 500MB
+- **Max File Size**: 30MB
 - **Port**: 5001
 - **Workers**: 4 workers × 4 threads = 16 concurrent requests
 - **Session Backend**: Redis (enables multi-worker session sharing)
@@ -321,7 +321,7 @@ The application uses:
 ### Application Security
 - **Session Isolation**: Files are isolated per session (guest users can only see their own files)
 - **File Validation**: Only `.log` file extensions accepted
-- **File Size Limit**: 500MB maximum upload size
+- **File Size Limit**: 30MB maximum upload size
 - **Secret Key**: Always set a secure `SECRET_KEY` environment variable in production
 
 ### Docker Security
