@@ -66,7 +66,7 @@
                     </div>
                 </div>
                 <small style="color: #666; font-size: 11px; margin-top: 5px; display: block;">
-                    💡 Tip: Click a log line to select it, then use "Apply Context" below to slice a time window
+                    💡 Tip: Click a log line to select it, then use "Apply Context" below to open a context panel with the logs around it
                 </small>
             </div>
 
@@ -80,6 +80,19 @@
                         <option value="10">± 10 minutes</option>
                     </select>
                     <button class="add-filter-btn" onclick="applyTimeWindowToSelected()" id="contextBtn" disabled style="opacity: 0.5;">Apply Context</button>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label>Line Window (click a log line to select, then apply):</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select class="logic-selector" id="lineWindow">
+                        <option value="10">± 10 lines</option>
+                        <option value="50" selected>± 50 lines</option>
+                        <option value="100">± 100 lines</option>
+                        <option value="500">± 500 lines</option>
+                    </select>
+                    <button class="add-filter-btn" onclick="applyLineWindowToSelected()" id="lineContextBtn" disabled style="opacity: 0.5;">Apply Context</button>
                 </div>
             </div>
 
@@ -117,14 +130,79 @@
             <button class="clear-btn" onclick="restoreFilters()" id="restoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
         </div>
 
-        <div class="logs-section">
-            <div class="logs-header">
-                <h3>Log Content</h3>
-                <span class="log-count" id="logCount">No logs loaded</span>
+        <div class="logs-area" id="logsArea">
+            <div class="logs-section">
+                <div class="logs-header">
+                    <h3>Log Content</h3>
+                    <span class="log-count" id="logCount">No logs loaded</span>
+                </div>
+                <div id="timeRange"></div>
+                <div class="logs-container" id="logsContainer">
+                    <div class="message info">Upload a .log file to get started</div>
+                </div>
             </div>
-            <div id="timeRange"></div>
-            <div class="logs-container" id="logsContainer">
-                <div class="message info">Upload a .log file to get started</div>
+
+            <div class="context-panel" id="contextPanel">
+                <div class="context-panel-header">
+                    <h3>Context</h3>
+                    <button class="context-panel-close" onclick="closeContextPanel()" aria-label="Close context panel">&times;</button>
+                </div>
+
+                <div class="filter-group">
+                    <label>Date Range:</label>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <input type="datetime-local" id="contextStartDate" step="1">
+                            <small id="contextStartDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                        </div>
+                        <span style="align-self: flex-start; margin-top: 8px;">to</span>
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                            <input type="datetime-local" id="contextEndDate" step="1">
+                            <small id="contextEndDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Include Text:</label>
+                    <input type="text" id="contextIncludeInput" placeholder="Text to include">
+                    <button class="add-filter-btn" onclick="addContextFilter('include')">Add Include</button>
+                    <div class="filter-list" id="contextIncludeFilters"></div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Exclude Text:</label>
+                    <input type="text" id="contextExcludeInput" placeholder="Text to exclude">
+                    <button class="add-filter-btn" onclick="addContextFilter('exclude')">Add Exclude</button>
+                    <div class="filter-list" id="contextExcludeFilters"></div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Filter Logic:</label>
+                    <select class="logic-selector" id="contextFilterLogic">
+                        <option value="AND">AND (all filters must match)</option>
+                        <option value="OR">OR (any filter matches)</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="contextCaseSensitive" style="cursor: pointer; width: 16px; height: 16px;">
+                        <span>Case sensitive for the filtered texts</span>
+                    </label>
+                </div>
+
+                <button class="apply-btn" onclick="applyContextPanelFilters()">Apply</button>
+                <button class="clear-btn" onclick="restoreContextFilters()" id="contextRestoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
+
+                <div class="logs-header" style="margin-top: 20px;">
+                    <h3>Context Log Content</h3>
+                    <span class="log-count" id="contextLogCount">No logs loaded</span>
+                </div>
+                <div id="contextTimeRange"></div>
+                <div class="logs-container" id="contextLogsContainer">
+                    <div class="message info">Select a log line and click "Apply Context" to drill in</div>
+                </div>
             </div>
         </div>
     </div>

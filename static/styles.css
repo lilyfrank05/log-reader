@@ -391,8 +391,76 @@ h1 {
     background: #7f8c8d;
 }
 
+.logs-area {
+    display: flex;
+    align-items: flex-start;
+}
+
+.logs-area .logs-section {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
 .logs-section {
     padding: 20px;
+}
+
+.context-panel {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 50%;
+    min-width: 0;
+    padding: 20px;
+    border-left: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.context-panel.open {
+    display: flex;
+}
+
+.context-panel .log-line {
+    cursor: default;
+}
+
+.context-panel .log-line:hover {
+    background-color: transparent;
+}
+
+.context-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.context-panel-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #7f8c8d;
+    padding: 2px 10px;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.context-panel-close:hover {
+    background: #ecf0f1;
+    color: #2c3e50;
+}
+
+@media (max-width: 900px) {
+    .logs-area {
+        flex-direction: column;
+    }
+
+    .context-panel {
+        border-left: none;
+        border-top: 1px solid #e0e0e0;
+        margin-top: 20px;
+    }
 }
 
 .logs-header {
