@@ -6,9 +6,24 @@ let excludeFilters = [];
 let fileTimeRange = null;
 let presets = [];
 
-// Filter history stack
-let filterHistory = [];
-let currentHistoryIndex = -1;
+// Main view filters are remembered per file (like the context panel's), so
+// switching files doesn't leak one file's filters/date range into another's
+// query, and "Restore Previous" never crosses file boundaries.
+let mainFiltersByFile = {}; // { [fileId]: { include, exclude, logic, caseSensitive, startDate, endDate, presetValue } }
+let mainHistoryByFile = {}; // { [fileId]: { history: [...states], index: number } }
+
+// Context panel state - its own filter set, independent of the main filters.
+// Remembered per file so drilling into a different entry in the same file
+// reuses the same secondary filters, but switching files starts fresh.
+let contextIncludeFilters = [];
+let contextExcludeFilters = [];
+let contextFiltersByFile = {};
+
+// Context panel has its own undo stack, separate from the main view's -
+// "Restore Previous" in each panel only walks back through that panel's own history.
+// Scoped per file (like contextFiltersByFile above) so restoring never pulls in a
+// different file's date range/filters after switching files.
+let contextHistoryByFile = {}; // { [fileId]: { history: [...states], index: number } }
 
 // DOM elements
 const fileInput = document.getElementById('fileInput');
@@ -44,8 +59,16 @@ function updateDateTimeDisplay(input, displayElement) {
     displayElement.textContent = `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
 }
 
-startDateInput.addEventListener('change', () => updateDateTimeDisplay(startDateInput, startDateDisplay));
-endDateInput.addEventListener('change', () => updateDateTimeDisplay(endDateInput, endDateDisplay));
+startDateInput.addEventListener('change', () => {
+    updateDateTimeDisplay(startDateInput, startDateDisplay);
+    saveMainFiltersForFile(currentFileId);
+});
+endDateInput.addEventListener('change', () => {
+    updateDateTimeDisplay(endDateInput, endDateDisplay);
+    saveMainFiltersForFile(currentFileId);
+});
+document.getElementById('filterLogic').addEventListener('change', () => saveMainFiltersForFile(currentFileId));
+document.getElementById('caseSensitive').addEventListener('change', () => saveMainFiltersForFile(currentFileId));
 
 // Load presets when page loads
 async function loadPresets() {
@@ -103,6 +126,7 @@ presetSelector.addEventListener('change', (e) => {
 
     // Update UI
     renderFilters();
+    saveMainFiltersForFile(currentFileId);
 });
 
 // Load presets on page load
@@ -311,6 +335,16 @@ async function selectFile(fileId) {
     currentFileId = fileId;
     renderFiles();
 
+    // Load this file's own remembered filters (or defaults if never visited)
+    // rather than leaving whatever filters/date range the previous file left behind
+    loadMainFiltersForFile(fileId);
+    updateRestoreButton();
+
+    // The context panel's content belongs to the previous file - close it
+    // rather than show stale results against the newly selected file
+    closeContextPanel();
+    updateContextRestoreButton();
+
     // Load file time range
     await loadFileTimeRange(fileId);
 
@@ -375,11 +409,17 @@ async function deleteFile(event, fileId) {
         });
 
         if (response.ok) {
+            delete contextFiltersByFile[fileId];
+            delete contextHistoryByFile[fileId];
+            delete mainFiltersByFile[fileId];
+            delete mainHistoryByFile[fileId];
+
             if (currentFileId === fileId) {
                 currentFileId = null;
                 document.getElementById('logsContainer').innerHTML =
                     '<div class="message info">Select a file to view logs</div>';
                 document.getElementById('logCount').textContent = 'No logs loaded';
+                closeContextPanel();
             }
             loadFiles();
         } else {
@@ -388,6 +428,39 @@ async function deleteFile(event, fileId) {
     } catch (error) {
         alert('Failed to delete file: ' + error.message);
     }
+}
+
+// Load a file's own remembered main filters (empty/default if never visited before)
+function loadMainFiltersForFile(fileId) {
+    const saved = mainFiltersByFile[fileId] || {
+        include: [], exclude: [], logic: 'AND', caseSensitive: false, startDate: '', endDate: '', presetValue: ''
+    };
+
+    includeFilters = [...saved.include];
+    excludeFilters = [...saved.exclude];
+    document.getElementById('filterLogic').value = saved.logic;
+    document.getElementById('caseSensitive').checked = saved.caseSensitive;
+    startDateInput.value = saved.startDate;
+    endDateInput.value = saved.endDate;
+    presetSelector.value = saved.presetValue;
+
+    updateDateTimeDisplay(startDateInput, startDateDisplay);
+    updateDateTimeDisplay(endDateInput, endDateDisplay);
+    renderFilters();
+}
+
+// Persist the main view's current filters against the given file
+function saveMainFiltersForFile(fileId) {
+    if (!fileId) return;
+    mainFiltersByFile[fileId] = {
+        include: [...includeFilters],
+        exclude: [...excludeFilters],
+        logic: document.getElementById('filterLogic').value,
+        caseSensitive: document.getElementById('caseSensitive').checked,
+        startDate: startDateInput.value,
+        endDate: endDateInput.value,
+        presetValue: presetSelector.value
+    };
 }
 
 // Add filter
@@ -405,6 +478,7 @@ function addFilter(type) {
 
     input.value = '';
     renderFilters();
+    saveMainFiltersForFile(currentFileId);
 }
 
 // Remove filter
@@ -415,6 +489,7 @@ function removeFilter(type, index) {
         excludeFilters.splice(index, 1);
     }
     renderFilters();
+    saveMainFiltersForFile(currentFileId);
 }
 
 // Render filter tags
@@ -437,8 +512,12 @@ function renderFilters() {
     `).join('');
 }
 
-// Save current filter state to history
+// Save current filter state to this file's own history
 function saveToHistory() {
+    if (!currentFileId) return;
+
+    const entry = mainHistoryByFile[currentFileId] || { history: [], index: -1 };
+
     const state = {
         includeFilters: [...includeFilters],
         excludeFilters: [...excludeFilters],
@@ -451,36 +530,34 @@ function saveToHistory() {
     };
 
     // If we're not at the end of history, truncate everything after current position
-    if (currentHistoryIndex < filterHistory.length - 1) {
-        filterHistory = filterHistory.slice(0, currentHistoryIndex + 1);
+    if (entry.index < entry.history.length - 1) {
+        entry.history = entry.history.slice(0, entry.index + 1);
     }
 
-    // Add new state to history
-    filterHistory.push(state);
-    currentHistoryIndex = filterHistory.length - 1;
+    entry.history.push(state);
+    entry.index = entry.history.length - 1;
+    mainHistoryByFile[currentFileId] = entry;
 
-    // Save to sessionStorage
     try {
-        sessionStorage.setItem('filterHistory', JSON.stringify(filterHistory));
-        sessionStorage.setItem('currentHistoryIndex', currentHistoryIndex.toString());
+        sessionStorage.setItem('mainHistoryByFile', JSON.stringify(mainHistoryByFile));
     } catch (e) {
         console.error('Failed to save history to sessionStorage:', e);
     }
 
-    // Update restore button state
     updateRestoreButton();
 }
 
-// Restore previous filter state from history
+// Restore the main view's previous state for the current file only (never
+// crosses into another file's history, and never touches the context panel's)
 function restoreFilters() {
-    if (currentHistoryIndex <= 0) {
+    const entry = mainHistoryByFile[currentFileId];
+    if (!entry || entry.index <= 0) {
         alert('No previous state to restore');
         return;
     }
 
-    // Move back in history
-    currentHistoryIndex--;
-    const state = filterHistory[currentHistoryIndex];
+    entry.index--;
+    const state = entry.history[entry.index];
 
     // Restore filters
     includeFilters = [...state.includeFilters];
@@ -499,25 +576,25 @@ function restoreFilters() {
 
     // Update filter tags UI
     renderFilters();
+    saveMainFiltersForFile(currentFileId);
 
-    // Save current index to sessionStorage
     try {
-        sessionStorage.setItem('currentHistoryIndex', currentHistoryIndex.toString());
+        sessionStorage.setItem('mainHistoryByFile', JSON.stringify(mainHistoryByFile));
     } catch (e) {
         console.error('Failed to save history index to sessionStorage:', e);
     }
 
-    // Update restore button state
     updateRestoreButton();
 
     // Automatically apply the restored filters without saving to history
     applyFilters(true);
 }
 
-// Update restore button enabled/disabled state
+// Update restore button enabled/disabled state, based on the current file's history
 function updateRestoreButton() {
     const restoreBtn = document.getElementById('restoreBtn');
-    if (currentHistoryIndex > 0) {
+    const entry = mainHistoryByFile[currentFileId];
+    if (entry && entry.index > 0) {
         restoreBtn.disabled = false;
         restoreBtn.style.opacity = '1';
     } else {
@@ -526,24 +603,19 @@ function updateRestoreButton() {
     }
 }
 
-// Load filter history from sessionStorage on page load
+// Load the main view's per-file history from sessionStorage on page load
 function loadHistoryFromSession() {
     try {
-        const savedHistory = sessionStorage.getItem('filterHistory');
-        const savedIndex = sessionStorage.getItem('currentHistoryIndex');
+        const saved = sessionStorage.getItem('mainHistoryByFile');
 
-        if (savedHistory) {
-            filterHistory = JSON.parse(savedHistory);
-        }
-        if (savedIndex !== null) {
-            currentHistoryIndex = parseInt(savedIndex);
+        if (saved) {
+            mainHistoryByFile = JSON.parse(saved);
         }
 
         updateRestoreButton();
     } catch (e) {
         console.error('Failed to load history from sessionStorage:', e);
-        filterHistory = [];
-        currentHistoryIndex = -1;
+        mainHistoryByFile = {};
     }
 }
 
@@ -561,8 +633,22 @@ function clearFilters() {
 
     // Update UI to show cleared filters
     renderFilters();
+    saveMainFiltersForFile(currentFileId);
 
     // Note: Date range is NOT cleared
+}
+
+// Shared fetch used by both the main log view and the context panel
+async function fetchFilteredLogs(fileId, filterData) {
+    const response = await fetch(`/api/logs/${fileId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(filterData)
+    });
+    const data = await response.json();
+    return { ok: response.ok, data };
 }
 
 async function applyFilters(skipSave = false) {
@@ -570,6 +656,8 @@ async function applyFilters(skipSave = false) {
         alert('Please select a file first');
         return;
     }
+
+    saveMainFiltersForFile(currentFileId);
 
     // Save current state to history before applying new filters (unless restoring)
     if (!skipSave) {
@@ -600,23 +688,18 @@ async function applyFilters(skipSave = false) {
     }
 
     try {
-        const response = await fetch(`/api/logs/${currentFileId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(filterData)
-        });
+        const { ok, data } = await fetchFilteredLogs(currentFileId, filterData);
 
-        const data = await response.json();
-
-        if (response.ok) {
+        if (ok) {
             renderLogs(data.lines, data.total, data.start_time, data.end_time, data.truncated, data.max_results);
+            return data;
         } else {
             logsContainer.innerHTML = `<div class="message error">${data.error || 'Failed to load logs'}</div>`;
+            return null;
         }
     } catch (error) {
         logsContainer.innerHTML = `<div class="message error">Failed to load logs: ${error.message}</div>`;
+        return null;
     }
 }
 
@@ -642,7 +725,7 @@ function renderLogs(lines, total, startTime, endTime, truncated, maxResults) {
     }
 
     logsContainer.innerHTML = warningHtml + lines.map((line, index) =>
-        `<div class="log-line" onclick="selectLogLine(this)" data-log-content="${escapeHtml(line.content).replace(/"/g, '&quot;')}">
+        `<div class="log-line" onclick="selectLogLine(this)" data-log-content="${escapeHtml(line.content).replace(/"/g, '&quot;')}" data-line-number="${line.line_number}">
             <span class="line-number">${line.line_number}</span>
             <span class="line-content">${escapeHtml(line.content)}</span>
         </div>`
@@ -690,20 +773,26 @@ function extractTimestamp(logLine) {
 
 // Store selected log line content
 let selectedLogContent = null;
+let selectedLineNumber = null;
 
 // Clear selection state
 function clearSelection() {
     selectedLogContent = null;
+    selectedLineNumber = null;
 
     // Remove selection from all log lines
     document.querySelectorAll('.log-line').forEach(line => {
         line.classList.remove('selected');
     });
 
-    // Disable the context button
+    // Disable the context buttons
     const contextBtn = document.getElementById('contextBtn');
     contextBtn.disabled = true;
     contextBtn.style.opacity = '0.5';
+
+    const lineContextBtn = document.getElementById('lineContextBtn');
+    lineContextBtn.disabled = true;
+    lineContextBtn.style.opacity = '0.5';
 }
 
 // Select a log line
@@ -723,11 +812,324 @@ function selectLogLine(element) {
     const textarea = document.createElement('textarea');
     textarea.innerHTML = logContent;
     selectedLogContent = textarea.value;
+    selectedLineNumber = parseInt(element.getAttribute('data-line-number'), 10);
 
-    // Enable the context button
+    // Enable the context buttons
     const contextBtn = document.getElementById('contextBtn');
     contextBtn.disabled = false;
     contextBtn.style.opacity = '1';
+
+    const lineContextBtn = document.getElementById('lineContextBtn');
+    lineContextBtn.disabled = false;
+    lineContextBtn.style.opacity = '1';
+}
+
+// Format a Date object for a datetime-local input (YYYY-MM-DDTHH:MM:SS)
+function formatDateForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
+// Set a pair of datetime-local inputs (and their display labels) from timestamps
+function setDateRangeInputs(startInput, startDisplay, endInput, endDisplay, startTime, endTime) {
+    if (startTime) {
+        startInput.value = formatDateForInput(new Date(startTime));
+    }
+    if (endTime) {
+        endInput.value = formatDateForInput(new Date(endTime));
+    }
+    updateDateTimeDisplay(startInput, startDisplay);
+    updateDateTimeDisplay(endInput, endDisplay);
+}
+
+// ============================================================================
+// Context Panel
+// ============================================================================
+// "Apply Context" never touches the main filtered view - it opens a side
+// panel with its own independent filters, seeded with the date range spanned
+// by the selected line's time/line window. This lets you drill into the
+// surrounding logs of one entry, close the panel, and pick another entry in
+// the main view without losing or having to restore the original search.
+
+const contextStartDateInput = document.getElementById('contextStartDate');
+const contextEndDateInput = document.getElementById('contextEndDate');
+const contextStartDateDisplay = document.getElementById('contextStartDateDisplay');
+const contextEndDateDisplay = document.getElementById('contextEndDateDisplay');
+const contextPanel = document.getElementById('contextPanel');
+const logsArea = document.getElementById('logsArea');
+
+function openContextPanel() {
+    contextPanel.classList.add('open');
+}
+
+function closeContextPanel() {
+    contextPanel.classList.remove('open');
+}
+
+// Load this file's remembered context filters into the panel (empty if none yet)
+function loadContextFiltersForFile(fileId) {
+    const saved = contextFiltersByFile[fileId] || { include: [], exclude: [], logic: 'AND', caseSensitive: false };
+    contextIncludeFilters = [...saved.include];
+    contextExcludeFilters = [...saved.exclude];
+    document.getElementById('contextFilterLogic').value = saved.logic;
+    document.getElementById('contextCaseSensitive').checked = saved.caseSensitive;
+    renderContextFilters();
+}
+
+// Persist the panel's current filters against the given file
+function saveContextFiltersForFile(fileId) {
+    if (!fileId) return;
+    contextFiltersByFile[fileId] = {
+        include: [...contextIncludeFilters],
+        exclude: [...contextExcludeFilters],
+        logic: document.getElementById('contextFilterLogic').value,
+        caseSensitive: document.getElementById('contextCaseSensitive').checked
+    };
+}
+
+function addContextFilter(type) {
+    const input = document.getElementById(type === 'include' ? 'contextIncludeInput' : 'contextExcludeInput');
+    const value = input.value.trim();
+    if (!value) return;
+
+    if (type === 'include') {
+        contextIncludeFilters.push(value);
+    } else {
+        contextExcludeFilters.push(value);
+    }
+
+    input.value = '';
+    renderContextFilters();
+    saveContextFiltersForFile(currentFileId);
+}
+
+function removeContextFilter(type, index) {
+    if (type === 'include') {
+        contextIncludeFilters.splice(index, 1);
+    } else {
+        contextExcludeFilters.splice(index, 1);
+    }
+    renderContextFilters();
+    saveContextFiltersForFile(currentFileId);
+}
+
+function renderContextFilters() {
+    document.getElementById('contextIncludeFilters').innerHTML = contextIncludeFilters.map((filter, index) => `
+        <div class="filter-tag">
+            ${filter}
+            <button onclick="removeContextFilter('include', ${index})">×</button>
+        </div>
+    `).join('');
+
+    document.getElementById('contextExcludeFilters').innerHTML = contextExcludeFilters.map((filter, index) => `
+        <div class="filter-tag exclude">
+            ${filter}
+            <button onclick="removeContextFilter('exclude', ${index})">×</button>
+        </div>
+    `).join('');
+}
+
+document.getElementById('contextFilterLogic').addEventListener('change', () => saveContextFiltersForFile(currentFileId));
+document.getElementById('contextCaseSensitive').addEventListener('change', () => saveContextFiltersForFile(currentFileId));
+
+// Save the panel's current state to this file's own undo stack
+function saveContextToHistory() {
+    if (!currentFileId) return;
+
+    const entry = contextHistoryByFile[currentFileId] || { history: [], index: -1 };
+
+    const state = {
+        includeFilters: [...contextIncludeFilters],
+        excludeFilters: [...contextExcludeFilters],
+        logic: document.getElementById('contextFilterLogic').value,
+        caseSensitive: document.getElementById('contextCaseSensitive').checked,
+        startDate: contextStartDateInput.value,
+        endDate: contextEndDateInput.value,
+        timestamp: Date.now()
+    };
+
+    if (entry.index < entry.history.length - 1) {
+        entry.history = entry.history.slice(0, entry.index + 1);
+    }
+
+    entry.history.push(state);
+    entry.index = entry.history.length - 1;
+    contextHistoryByFile[currentFileId] = entry;
+
+    try {
+        sessionStorage.setItem('contextHistoryByFile', JSON.stringify(contextHistoryByFile));
+    } catch (e) {
+        console.error('Failed to save context history to sessionStorage:', e);
+    }
+
+    updateContextRestoreButton();
+}
+
+// Restore the context panel's previous state for the current file only (does
+// not touch the main view's history, and never crosses into another file's history)
+function restoreContextFilters() {
+    const entry = contextHistoryByFile[currentFileId];
+    if (!entry || entry.index <= 0) {
+        alert('No previous state to restore');
+        return;
+    }
+
+    entry.index--;
+    const state = entry.history[entry.index];
+
+    contextIncludeFilters = [...state.includeFilters];
+    contextExcludeFilters = [...state.excludeFilters];
+
+    document.getElementById('contextFilterLogic').value = state.logic;
+    document.getElementById('contextCaseSensitive').checked = state.caseSensitive;
+    contextStartDateInput.value = state.startDate;
+    contextEndDateInput.value = state.endDate;
+
+    updateDateTimeDisplay(contextStartDateInput, contextStartDateDisplay);
+    updateDateTimeDisplay(contextEndDateInput, contextEndDateDisplay);
+
+    renderContextFilters();
+    saveContextFiltersForFile(currentFileId);
+
+    try {
+        sessionStorage.setItem('contextHistoryByFile', JSON.stringify(contextHistoryByFile));
+    } catch (e) {
+        console.error('Failed to save context history index to sessionStorage:', e);
+    }
+
+    updateContextRestoreButton();
+
+    // Automatically re-apply the restored state without saving it again
+    applyContextPanelFilters(true);
+}
+
+// Enable/disable the context panel's own restore button, based on the current file's history
+function updateContextRestoreButton() {
+    const restoreBtn = document.getElementById('contextRestoreBtn');
+    const entry = contextHistoryByFile[currentFileId];
+    if (entry && entry.index > 0) {
+        restoreBtn.disabled = false;
+        restoreBtn.style.opacity = '1';
+    } else {
+        restoreBtn.disabled = true;
+        restoreBtn.style.opacity = '0.5';
+    }
+}
+
+// Load the context panel's per-file history from sessionStorage on page load
+function loadContextHistoryFromSession() {
+    try {
+        const saved = sessionStorage.getItem('contextHistoryByFile');
+
+        if (saved) {
+            contextHistoryByFile = JSON.parse(saved);
+        }
+
+        updateContextRestoreButton();
+    } catch (e) {
+        console.error('Failed to load context history from sessionStorage:', e);
+        contextHistoryByFile = {};
+    }
+}
+
+// Run the panel's own filters (independent of the main view's) against the current file
+async function applyContextPanelFilters(skipSave = false) {
+    if (!currentFileId) return;
+
+    if (!skipSave) {
+        saveContextToHistory();
+    }
+
+    saveContextFiltersForFile(currentFileId);
+
+    const contextLogsContainer = document.getElementById('contextLogsContainer');
+    contextLogsContainer.innerHTML = '<div class="loading">Loading logs...</div>';
+
+    const filterData = {
+        include: contextIncludeFilters,
+        exclude: contextExcludeFilters,
+        logic: document.getElementById('contextFilterLogic').value,
+        case_sensitive: document.getElementById('contextCaseSensitive').checked
+    };
+
+    const startDate = contextStartDateInput.value;
+    const endDate = contextEndDateInput.value;
+
+    if (startDate) {
+        filterData.start_date = startDate;
+    }
+    if (endDate) {
+        filterData.end_date = endDate;
+    }
+
+    try {
+        const { ok, data } = await fetchFilteredLogs(currentFileId, filterData);
+
+        if (ok) {
+            renderContextLogs(data.lines, data.total, data.start_time, data.end_time, data.truncated, data.max_results);
+        } else {
+            contextLogsContainer.innerHTML = `<div class="message error">${data.error || 'Failed to load logs'}</div>`;
+        }
+    } catch (error) {
+        contextLogsContainer.innerHTML = `<div class="message error">Failed to load logs: ${error.message}</div>`;
+    }
+}
+
+// Render logs inside the context panel (read-only - no line selection/nesting)
+function renderContextLogs(lines, total, startTime, endTime, truncated, maxResults) {
+    const logsContainer = document.getElementById('contextLogsContainer');
+    const logCount = document.getElementById('contextLogCount');
+    const timeRange = document.getElementById('contextTimeRange');
+
+    if (lines.length === 0) {
+        logsContainer.innerHTML = '<div class="message info">No logs match the current filters</div>';
+        logCount.textContent = '0 lines';
+        timeRange.innerHTML = '';
+        return;
+    }
+
+    let warningHtml = '';
+    if (truncated) {
+        warningHtml = `<div class="message warning" style="background: #fff3cd; color: #856404; border-left: 4px solid #ffc107; margin-bottom: 10px;">
+            <strong>Results Truncated:</strong> Only showing first ${maxResults.toLocaleString()} lines. Please refine your filters to see more specific results.
+        </div>`;
+    }
+
+    logsContainer.innerHTML = warningHtml + lines.map(line =>
+        `<div class="log-line">
+            <span class="line-number">${line.line_number}</span>
+            <span class="line-content">${escapeHtml(line.content)}</span>
+        </div>`
+    ).join('');
+
+    logCount.textContent = `${total.toLocaleString()} lines`;
+
+    if (startTime || endTime) {
+        timeRange.innerHTML = `
+            <div class="time-range">
+                <strong>Time Range:</strong>
+                ${formatDateTime(startTime)} → ${formatDateTime(endTime)}
+            </div>
+        `;
+    } else {
+        timeRange.innerHTML = '<div class="time-range">No timestamps found in logs</div>';
+    }
+}
+
+// Open (or refill) the context panel with a computed date range, reusing
+// this file's remembered secondary filters, then apply immediately
+function openContextWithRange(startTime, endTime) {
+    loadContextFiltersForFile(currentFileId);
+
+    setDateRangeInputs(contextStartDateInput, contextStartDateDisplay, contextEndDateInput, contextEndDateDisplay, startTime, endTime);
+
+    openContextPanel();
+    applyContextPanelFilters();
 }
 
 // Apply time window to selected log line
@@ -752,29 +1154,50 @@ function applyTimeWindowToSelected() {
     const startTime = new Date(timestamp.getTime() - windowMinutes * 60 * 1000);
     const endTime = new Date(timestamp.getTime() + windowMinutes * 60 * 1000);
 
-    // Format dates for datetime-local input (YYYY-MM-DDTHH:MM:SS)
-    const formatForInput = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-    };
+    openContextWithRange(startTime, endTime);
+}
 
-    // Set the date range inputs
-    startDateInput.value = formatForInput(startTime);
-    endDateInput.value = formatForInput(endTime);
+// Apply line window to selected log line: translate "± N lines" into the
+// date range those surrounding lines span, then open it in the context panel
+// the same way the time-window context does.
+async function applyLineWindowToSelected() {
+    if (!selectedLogContent || selectedLineNumber == null || isNaN(selectedLineNumber)) {
+        alert('Please select a log line first');
+        return;
+    }
 
-    // Update the display labels
-    updateDateTimeDisplay(startDateInput, startDateDisplay);
-    updateDateTimeDisplay(endDateInput, endDateDisplay);
+    if (!currentFileId) {
+        alert('Please select a file first');
+        return;
+    }
 
-    // Automatically apply filters (this will clear selection)
-    applyFilters();
+    const windowLines = parseInt(document.getElementById('lineWindow').value);
+
+    let contextData;
+    try {
+        const response = await fetch(
+            `/api/files/${currentFileId}/line-context?line_number=${selectedLineNumber}&window=${windowLines}`
+        );
+        contextData = await response.json();
+
+        if (!response.ok) {
+            alert(contextData.error || 'Failed to load line context');
+            return;
+        }
+    } catch (error) {
+        alert('Failed to load line context: ' + error.message);
+        return;
+    }
+
+    if (!contextData.start_time && !contextData.end_time) {
+        alert('No valid timestamps found in the surrounding lines');
+        return;
+    }
+
+    openContextWithRange(contextData.start_time, contextData.end_time);
 }
 
 // Load files and history on page load
 loadHistoryFromSession();
+loadContextHistoryFromSession();
 loadFiles();

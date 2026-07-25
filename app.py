@@ -35,6 +35,7 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-producti
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30MB max file size
 app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
+app.config['MAX_LINE_CONTEXT_WINDOW'] = 5000  # Max lines to scan on each side of a line-context request
 
 # Configure Redis session
 app.config['SESSION_TYPE'] = 'redis'
@@ -637,6 +638,80 @@ def get_file_time_range(file_id):
         return jsonify({'error': f'Error reading log file: {str(e)}'}), 500
 
     response_data = {}
+    if first_timestamp:
+        response_data['start_time'] = first_timestamp.isoformat()
+    if last_timestamp:
+        response_data['end_time'] = last_timestamp.isoformat()
+
+    return jsonify(response_data)
+
+
+@app.route('/api/files/<file_id>/line-context', methods=['GET'])
+def get_line_context(file_id):
+    """
+    Get the time range spanned by the lines surrounding a given line number.
+    Used to translate a "± N lines" selection into a date range, the same
+    way the time-window context feature translates "± N minutes" into one.
+    """
+    session_id = get_session_id()
+    files = get_user_files(session_id)
+
+    # Find the requested file
+    target_file = None
+    for f in files:
+        if f['id'] == file_id:
+            target_file = f
+            break
+
+    if not target_file:
+        return jsonify({'error': 'File not found'}), 404
+
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], target_file['stored_name'])
+
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File no longer exists'}), 404
+
+    try:
+        line_number = int(request.args.get('line_number', ''))
+        window = int(request.args.get('window', ''))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'line_number and window must be integers'}), 400
+
+    if line_number < 1:
+        return jsonify({'error': 'line_number must be >= 1'}), 400
+    if window < 0:
+        return jsonify({'error': 'window must be >= 0'}), 400
+
+    window = min(window, app.config['MAX_LINE_CONTEXT_WINDOW'])
+
+    start_line = max(1, line_number - window)
+    end_line = line_number + window
+
+    first_timestamp = None
+    last_timestamp = None
+    lines_found = 0
+
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            for current_line_number, line in enumerate(f, start=1):
+                if current_line_number < start_line:
+                    continue
+                if current_line_number > end_line:
+                    break
+                lines_found += 1
+                ts = parse_timestamp(line.rstrip('\n\r'))
+                if ts:
+                    if first_timestamp is None:
+                        first_timestamp = ts
+                    last_timestamp = ts
+    except Exception as e:
+        return jsonify({'error': f'Error reading log file: {str(e)}'}), 500
+
+    response_data = {
+        'start_line': start_line,
+        'end_line': end_line,
+        'lines_scanned': lines_found
+    }
     if first_timestamp:
         response_data['start_time'] = first_timestamp.isoformat()
     if last_timestamp:
