@@ -31,6 +31,7 @@ const uploadBtn = document.getElementById('uploadBtn');
 const selectedFileName = document.getElementById('selectedFileName');
 const uploadMessage = document.getElementById('uploadMessage');
 const presetSelector = document.getElementById('presetSelector');
+const contextPresetSelector = document.getElementById('contextPresetSelector');
 
 // Prevent keyboard input on datetime-local fields
 const startDateInput = document.getElementById('startDate');
@@ -87,12 +88,14 @@ async function loadPresets() {
 
 // Populate preset dropdown
 function populatePresetDropdown() {
-    presetSelector.innerHTML = '<option value="">-- Select Preset --</option>';
-    presets.forEach((preset, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = preset.name;
-        presetSelector.appendChild(option);
+    [presetSelector, contextPresetSelector].forEach(selector => {
+        selector.innerHTML = '<option value="">-- Select Preset --</option>';
+        presets.forEach((preset, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = preset.name;
+            selector.appendChild(option);
+        });
     });
 }
 
@@ -127,6 +130,39 @@ presetSelector.addEventListener('change', (e) => {
     // Update UI
     renderFilters();
     saveMainFiltersForFile(currentFileId);
+});
+
+// Handle preset selection in the context panel (mirrors the main view's above)
+contextPresetSelector.addEventListener('change', (e) => {
+    const presetIndex = e.target.value;
+    if (presetIndex === '') return;
+
+    const preset = presets[presetIndex];
+    if (!preset) return;
+
+    // Clear current filters
+    contextIncludeFilters = [];
+    contextExcludeFilters = [];
+
+    // Apply preset filters (don't touch date range)
+    preset.includes.forEach(text => {
+        if (text.trim()) {
+            contextIncludeFilters.push(text);
+        }
+    });
+
+    preset.excludes.forEach(text => {
+        if (text.trim()) {
+            contextExcludeFilters.push(text);
+        }
+    });
+
+    // Set logic
+    document.getElementById('contextFilterLogic').value = preset.logic;
+
+    // Update UI
+    renderContextFilters();
+    saveContextFiltersForFile(currentFileId);
 });
 
 // Load presets on page load
@@ -873,11 +909,12 @@ function closeContextPanel() {
 
 // Load this file's remembered context filters into the panel (empty if none yet)
 function loadContextFiltersForFile(fileId) {
-    const saved = contextFiltersByFile[fileId] || { include: [], exclude: [], logic: 'AND', caseSensitive: false };
+    const saved = contextFiltersByFile[fileId] || { include: [], exclude: [], logic: 'AND', caseSensitive: false, presetValue: '' };
     contextIncludeFilters = [...saved.include];
     contextExcludeFilters = [...saved.exclude];
     document.getElementById('contextFilterLogic').value = saved.logic;
     document.getElementById('contextCaseSensitive').checked = saved.caseSensitive;
+    contextPresetSelector.value = saved.presetValue || '';
     renderContextFilters();
 }
 
@@ -888,8 +925,23 @@ function saveContextFiltersForFile(fileId) {
         include: [...contextIncludeFilters],
         exclude: [...contextExcludeFilters],
         logic: document.getElementById('contextFilterLogic').value,
-        caseSensitive: document.getElementById('contextCaseSensitive').checked
+        caseSensitive: document.getElementById('contextCaseSensitive').checked,
+        presetValue: contextPresetSelector.value
     };
+}
+
+// Clear the context panel's filters (mirrors the main view's clearFilters())
+function clearContextFilters() {
+    contextIncludeFilters = [];
+    contextExcludeFilters = [];
+
+    contextPresetSelector.value = '';
+    document.getElementById('contextFilterLogic').value = 'AND';
+
+    renderContextFilters();
+    saveContextFiltersForFile(currentFileId);
+
+    // Note: Date range is NOT cleared, matching the main view's Clear Filters
 }
 
 function addContextFilter(type) {
@@ -950,6 +1002,7 @@ function saveContextToHistory() {
         caseSensitive: document.getElementById('contextCaseSensitive').checked,
         startDate: contextStartDateInput.value,
         endDate: contextEndDateInput.value,
+        presetValue: contextPresetSelector.value,
         timestamp: Date.now()
     };
 
@@ -989,6 +1042,7 @@ function restoreContextFilters() {
     document.getElementById('contextCaseSensitive').checked = state.caseSensitive;
     contextStartDateInput.value = state.startDate;
     contextEndDateInput.value = state.endDate;
+    contextPresetSelector.value = state.presetValue || '';
 
     updateDateTimeDisplay(contextStartDateInput, contextStartDateDisplay);
     updateDateTimeDisplay(contextEndDateInput, contextEndDateDisplay);
