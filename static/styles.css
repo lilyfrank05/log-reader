@@ -448,13 +448,21 @@ h1 {
         [timerangedisplay] auto
         [logscontainer] auto
         [end];
-    column-gap: 30px;
+    column-gap: 0;
     padding: 20px;
     position: relative;
 }
 
 .workspace-grid.context-open {
-    grid-template-columns: 1fr 1fr;
+grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.workspace-grid.context-open .col-main {
+    padding-right: 20px;
+}
+
+.workspace-grid.context-open .col-context {
+    padding-left: 20px;
 }
 
 .col-main {
@@ -536,7 +544,15 @@ h1 {
     color: #2c3e50;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 700px) {
+    .workspace-grid.context-open .col-main {
+        padding-right: 0;
+    }
+
+    .workspace-grid.context-open .col-context {
+        padding-left: 0;
+    }
+
     /* Below the breakpoint the two panels stack instead of sitting side by
        side, so the shared row-tracks that keep them aligned on wide screens
        would otherwise make context fields overlap the main column's fields
