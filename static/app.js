@@ -901,10 +901,12 @@ const logsArea = document.getElementById('logsArea');
 
 function openContextPanel() {
     contextPanel.classList.add('open');
+    logsArea.classList.add('context-open');
 }
 
 function closeContextPanel() {
     contextPanel.classList.remove('open');
+    logsArea.classList.remove('context-open');
 }
 
 // Load this file's remembered context filters into the panel (empty if none yet)
