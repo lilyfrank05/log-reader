@@ -299,7 +299,7 @@ Presets are loaded fresh each time you reload the page. To update presets:
 ### Application Settings
 
 - **Upload Folder**: `uploads/` (created automatically, persisted in Docker volume)
-- **Max File Size**: 30MB
+- **Max File Size**: 30MB for direct `.log` uploads; zipped uploads may contain up to 500MB of uncompressed log content (the zip itself must still transfer under 30MB)
 - **Port**: 5001
 - **Workers**: 4 workers × 4 threads = 16 concurrent requests
 - **Session Backend**: Redis (enables multi-worker session sharing)
@@ -321,7 +321,7 @@ The application uses:
 ### Application Security
 - **Session Isolation**: Files are isolated per session (guest users can only see their own files)
 - **File Validation**: Only `.log` file extensions accepted
-- **File Size Limit**: 30MB maximum upload size
+- **File Size Limit**: 30MB maximum upload size (transferred bytes); zip uploads may decompress to up to 500MB of log content, guarded against zip bombs by that cap
 - **Secret Key**: Always set a secure `SECRET_KEY` environment variable in production
 
 ### Docker Security
