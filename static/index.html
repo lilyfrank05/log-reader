@@ -54,15 +54,16 @@
 
             <div class="filter-group">
                 <label>Date Range:</label>
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="date-range-row">
+                    <div class="date-field">
+                        <span class="date-field-label">From</span>
                         <input type="datetime-local" id="startDate" step="1">
-                        <small id="startDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                        <small id="startDateDisplay" class="date-field-hint"></small>
                     </div>
-                    <span style="align-self: flex-start; margin-top: 8px;">to</span>
-                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                    <div class="date-field">
+                        <span class="date-field-label">To</span>
                         <input type="datetime-local" id="endDate" step="1">
-                        <small id="endDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                        <small id="endDateDisplay" class="date-field-hint"></small>
                     </div>
                 </div>
                 <small style="color: #666; font-size: 11px; margin-top: 5px; display: block;">
@@ -149,16 +150,24 @@
                 </div>
 
                 <div class="filter-group">
+                    <label>Load Preset:</label>
+                    <select class="logic-selector" id="contextPresetSelector">
+                        <option value="">-- Select Preset --</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
                     <label>Date Range:</label>
-                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                    <div class="date-range-row">
+                        <div class="date-field">
+                            <span class="date-field-label">From</span>
                             <input type="datetime-local" id="contextStartDate" step="1">
-                            <small id="contextStartDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                            <small id="contextStartDateDisplay" class="date-field-hint"></small>
                         </div>
-                        <span style="align-self: flex-start; margin-top: 8px;">to</span>
-                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                        <div class="date-field">
+                            <span class="date-field-label">To</span>
                             <input type="datetime-local" id="contextEndDate" step="1">
-                            <small id="contextEndDateDisplay" style="color: #16a085; font-size: 11px; font-weight: 600; min-height: 14px;"></small>
+                            <small id="contextEndDateDisplay" class="date-field-hint"></small>
                         </div>
                     </div>
                 </div>
@@ -192,7 +201,8 @@
                     </label>
                 </div>
 
-                <button class="apply-btn" onclick="applyContextPanelFilters()">Apply</button>
+                <button class="apply-btn" onclick="applyContextPanelFilters()">Apply Filters</button>
+                <button class="clear-btn" onclick="clearContextFilters()">Clear Filters</button>
                 <button class="clear-btn" onclick="restoreContextFilters()" id="contextRestoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
 
                 <div class="logs-header" style="margin-top: 20px;">
