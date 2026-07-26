@@ -422,32 +422,86 @@ h1 {
     background: #7f8c8d;
 }
 
-.logs-area {
-    display: flex;
-    align-items: flex-start;
+/*
+ * The main filter/log column and the context panel are laid out as a single
+ * CSS grid with named row lines, so that shared fields (Load Preset, Date
+ * Range, Include/Exclude, etc.) sit on the exact same row track in both
+ * columns and stay visually aligned even though each column has a different
+ * number of fields (e.g. only the main column has Time/Line Window rows).
+ */
+.workspace-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows:
+        [title] auto
+        [filetime] auto
+        [preset] auto
+        [daterange] auto
+        [timewindow] auto
+        [linewindow] auto
+        [include] auto
+        [exclude] auto
+        [logic] auto
+        [casesensitive] auto
+        [buttons] auto
+        [logsheader] auto
+        [timerangedisplay] auto
+        [logscontainer] auto
+        [end];
+    column-gap: 30px;
+    padding: 20px;
+    position: relative;
 }
 
-.logs-area .logs-section {
-    flex: 1 1 100%;
+.workspace-grid.context-open {
+    grid-template-columns: 2fr 1fr;
+}
+
+.col-main {
+    grid-column: 1;
     min-width: 0;
 }
 
-.logs-section {
-    padding: 20px;
+.col-context {
+    grid-column: 2;
+    min-width: 0;
 }
+
+.row-title { grid-row: title; }
+.row-filetime { grid-row: filetime; }
+.row-preset { grid-row: preset; }
+.row-daterange { grid-row: daterange; }
+.row-timewindow { grid-row: timewindow; }
+.row-linewindow { grid-row: linewindow; }
+.row-include { grid-row: include; }
+.row-exclude { grid-row: exclude; }
+.row-logic { grid-row: logic; }
+.row-casesensitive { grid-row: casesensitive; }
+.row-buttons { grid-row: buttons; }
+.row-logsheader {
+    grid-row: logsheader;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+.row-timerangedisplay { grid-row: timerangedisplay; }
+.row-logscontainer { grid-row: logscontainer; }
 
 .context-panel {
     display: none;
-    flex-direction: column;
-    flex: 1 1 50%;
-    min-width: 0;
-    padding: 20px;
-    border-left: 1px solid #e0e0e0;
-    background: #fafafa;
 }
 
 .context-panel.open {
-    display: flex;
+    display: contents;
+}
+
+.context-panel-bg {
+    grid-column: 2;
+    grid-row: title / end;
+    background: #fafafa;
+    border-left: 1px solid #e0e0e0;
+    margin: -20px -20px -20px 0;
+    padding-right: 20px;
 }
 
 .context-panel .log-line {
@@ -483,14 +537,28 @@ h1 {
 }
 
 @media (max-width: 900px) {
-    .logs-area {
-        flex-direction: column;
+    /* Below the breakpoint the two panels stack instead of sitting side by
+       side, so the shared row-tracks that keep them aligned on wide screens
+       would otherwise make context fields overlap the main column's fields
+       at the same row. Drop every context item back to auto-flow so it
+       stacks after the main column instead. */
+    .workspace-grid.context-open {
+        grid-template-columns: 1fr;
     }
 
-    .context-panel {
-        border-left: none;
-        border-top: 1px solid #e0e0e0;
+    .col-context {
+        grid-column: 1;
+        grid-row: auto !important;
+    }
+
+    .context-panel-bg {
+        display: none;
+    }
+
+    .row-title.context-panel-header {
         margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
     }
 }
 
