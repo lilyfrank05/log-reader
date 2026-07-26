@@ -460,6 +460,7 @@ h1 {
 .col-main {
     grid-column: 1;
     min-width: 0;
+    margin-left: 20px;
 }
 
 .col-context {
