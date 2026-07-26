@@ -33,8 +33,10 @@ from cleanup import cleanup_old_files, daily_full_cleanup
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30MB max upload (transferred bytes)
+RAW_LOG_MAX_SIZE = 500 * 1024 * 1024  # 500MB max for direct .log/.log_1 uploads (no unzip overhead)
+ZIP_UPLOAD_MAX_SIZE = 30 * 1024 * 1024  # 30MB max for the zip file itself (transferred bytes)
 ZIP_MAX_CONTENT_SIZE = 500 * 1024 * 1024  # 500MB max *uncompressed* log content inside a zip
+app.config['MAX_CONTENT_LENGTH'] = RAW_LOG_MAX_SIZE  # global request-body cap; zip files are further capped below
 app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
 app.config['MAX_LINE_CONTEXT_WINDOW'] = 5000  # Max lines to scan on each side of a line-context request
 
@@ -429,7 +431,12 @@ def upload_file():
             # Extract and validate zip contents (returns single file tuple)
             from io import BytesIO
             # Read the uploaded file into BytesIO (zipfile needs seekable stream)
-            zip_data = BytesIO(file.read())
+            raw_zip_bytes = file.read()
+            if len(raw_zip_bytes) > ZIP_UPLOAD_MAX_SIZE:
+                return jsonify({'error': f'Zip file too large (max {ZIP_UPLOAD_MAX_SIZE / 1024 / 1024:.0f}MB). '
+                                          f'The zip itself must stay under this limit; its uncompressed contents '
+                                          f'may be up to {ZIP_MAX_CONTENT_SIZE / 1024 / 1024:.0f}MB.'}), 400
+            zip_data = BytesIO(raw_zip_bytes)
             log_filename, log_content = extract_and_validate_zip(zip_data)
 
             # Create a BytesIO object from the extracted content
@@ -474,10 +481,9 @@ def handle_file_too_large(e):
     upload exceeds MAX_CONTENT_LENGTH, so the frontend's response.json() call
     doesn't fail trying to parse HTML."""
     max_mb = app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024
-    zip_max_mb = ZIP_MAX_CONTENT_SIZE / 1024 / 1024
-    return jsonify({'error': f'File too large. Maximum upload size is {max_mb:.0f}MB. '
-                              f'For larger log files, zip them first — zipped uploads support '
-                              f'up to {zip_max_mb:.0f}MB of uncompressed log content.'}), 413
+    zip_upload_max_mb = ZIP_UPLOAD_MAX_SIZE / 1024 / 1024
+    return jsonify({'error': f'File too large. Maximum upload size is {max_mb:.0f}MB for .log/.log_1 files. '
+                              f'Zip uploads must be under {zip_upload_max_mb:.0f}MB.'}), 413
 
 
 @app.route('/api/files', methods=['GET'])
