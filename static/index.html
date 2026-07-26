@@ -40,19 +40,21 @@
             <div id="filesContainer"></div>
         </div>
 
-        <div class="filters-section">
-            <h3>Filters</h3>
+        <div class="workspace-grid" id="logsArea">
+            <div class="col-main row-title">
+                <h3>Filters</h3>
+            </div>
 
-            <div id="fileTimeRange"></div>
+            <div id="fileTimeRange" class="col-main row-filetime"></div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-preset">
                 <label>Load Preset:</label>
                 <select class="logic-selector" id="presetSelector">
                     <option value="">-- Select Preset --</option>
                 </select>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-daterange">
                 <label>Date Range:</label>
                 <div class="date-range-row">
                     <div class="date-field">
@@ -71,7 +73,7 @@
                 </small>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-timewindow">
                 <label>Time Window (click a log line to select, then apply):</label>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <select class="logic-selector" id="timeWindow">
@@ -84,7 +86,7 @@
                 </div>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-linewindow">
                 <label>Line Window (click a log line to select, then apply):</label>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <select class="logic-selector" id="lineWindow">
@@ -97,21 +99,21 @@
                 </div>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-include">
                 <label>Include Text:</label>
                 <input type="text" id="includeInput" placeholder="Text to include">
                 <button class="add-filter-btn" onclick="addFilter('include')">Add Include</button>
                 <div class="filter-list" id="includeFilters"></div>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-exclude">
                 <label>Exclude Text:</label>
                 <input type="text" id="excludeInput" placeholder="Text to exclude">
                 <button class="add-filter-btn" onclick="addFilter('exclude')">Add Exclude</button>
                 <div class="filter-list" id="excludeFilters"></div>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-logic">
                 <label>Filter Logic:</label>
                 <select class="logic-selector" id="filterLogic">
                     <option value="AND">AND (all filters must match)</option>
@@ -119,44 +121,46 @@
                 </select>
             </div>
 
-            <div class="filter-group">
+            <div class="filter-group col-main row-casesensitive">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                     <input type="checkbox" id="caseSensitive" style="cursor: pointer; width: 16px; height: 16px;">
                     <span>Case sensitive for the filtered texts</span>
                 </label>
             </div>
 
-            <button class="apply-btn" onclick="applyFilters()">Apply Filters</button>
-            <button class="clear-btn" onclick="clearFilters()">Clear Filters</button>
-            <button class="clear-btn" onclick="restoreFilters()" id="restoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
-        </div>
+            <div class="col-main row-buttons">
+                <button class="apply-btn" onclick="applyFilters()">Apply Filters</button>
+                <button class="clear-btn" onclick="clearFilters()">Clear Filters</button>
+                <button class="clear-btn" onclick="restoreFilters()" id="restoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
+            </div>
 
-        <div class="logs-area" id="logsArea">
-            <div class="logs-section">
-                <div class="logs-header">
-                    <h3>Log Content</h3>
-                    <span class="log-count" id="logCount">No logs loaded</span>
-                </div>
-                <div id="timeRange"></div>
-                <div class="logs-container" id="logsContainer">
-                    <div class="message info">Upload a .log file to get started</div>
-                </div>
+            <div class="col-main row-logsheader logs-header">
+                <h3>Log Content</h3>
+                <span class="log-count" id="logCount">No logs loaded</span>
+            </div>
+
+            <div id="timeRange" class="col-main row-timerangedisplay"></div>
+
+            <div class="logs-container col-main row-logscontainer" id="logsContainer">
+                <div class="message info">Upload a .log file to get started</div>
             </div>
 
             <div class="context-panel" id="contextPanel">
-                <div class="context-panel-header">
+                <div class="context-panel-bg" aria-hidden="true"></div>
+
+                <div class="col-context row-title context-panel-header">
                     <h3>Context</h3>
                     <button class="context-panel-close" onclick="closeContextPanel()" aria-label="Close context panel">&times;</button>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-preset">
                     <label>Load Preset:</label>
                     <select class="logic-selector" id="contextPresetSelector">
                         <option value="">-- Select Preset --</option>
                     </select>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-daterange">
                     <label>Date Range:</label>
                     <div class="date-range-row">
                         <div class="date-field">
@@ -172,21 +176,21 @@
                     </div>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-include">
                     <label>Include Text:</label>
                     <input type="text" id="contextIncludeInput" placeholder="Text to include">
                     <button class="add-filter-btn" onclick="addContextFilter('include')">Add Include</button>
                     <div class="filter-list" id="contextIncludeFilters"></div>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-exclude">
                     <label>Exclude Text:</label>
                     <input type="text" id="contextExcludeInput" placeholder="Text to exclude">
                     <button class="add-filter-btn" onclick="addContextFilter('exclude')">Add Exclude</button>
                     <div class="filter-list" id="contextExcludeFilters"></div>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-logic">
                     <label>Filter Logic:</label>
                     <select class="logic-selector" id="contextFilterLogic">
                         <option value="AND">AND (all filters must match)</option>
@@ -194,23 +198,27 @@
                     </select>
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group col-context row-casesensitive">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <input type="checkbox" id="contextCaseSensitive" style="cursor: pointer; width: 16px; height: 16px;">
                         <span>Case sensitive for the filtered texts</span>
                     </label>
                 </div>
 
-                <button class="apply-btn" onclick="applyContextPanelFilters()">Apply Filters</button>
-                <button class="clear-btn" onclick="clearContextFilters()">Clear Filters</button>
-                <button class="clear-btn" onclick="restoreContextFilters()" id="contextRestoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
+                <div class="col-context row-buttons">
+                    <button class="apply-btn" onclick="applyContextPanelFilters()">Apply Filters</button>
+                    <button class="clear-btn" onclick="clearContextFilters()">Clear Filters</button>
+                    <button class="clear-btn" onclick="restoreContextFilters()" id="contextRestoreBtn" disabled style="opacity: 0.5;">Restore Previous</button>
+                </div>
 
-                <div class="logs-header" style="margin-top: 20px;">
+                <div class="col-context row-logsheader logs-header">
                     <h3>Context Log Content</h3>
                     <span class="log-count" id="contextLogCount">No logs loaded</span>
                 </div>
-                <div id="contextTimeRange"></div>
-                <div class="logs-container" id="contextLogsContainer">
+
+                <div id="contextTimeRange" class="col-context row-timerangedisplay"></div>
+
+                <div class="logs-container col-context row-logscontainer" id="contextLogsContainer">
                     <div class="message info">Select a log line and click "Apply Context" to drill in</div>
                 </div>
             </div>
