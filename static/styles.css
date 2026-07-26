@@ -454,7 +454,7 @@ h1 {
 }
 
 .workspace-grid.context-open {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .workspace-grid.context-open .col-main {
