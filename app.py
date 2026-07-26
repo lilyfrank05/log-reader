@@ -33,7 +33,8 @@ from cleanup import cleanup_old_files, daily_full_cleanup
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30MB max upload (transferred bytes)
+ZIP_MAX_CONTENT_SIZE = 500 * 1024 * 1024  # 500MB max *uncompressed* log content inside a zip
 app.config['MAX_RESULTS'] = 50000  # Maximum number of log lines to return
 app.config['MAX_LINE_CONTEXT_WINDOW'] = 5000  # Max lines to scan on each side of a line-context request
 
@@ -190,7 +191,7 @@ def is_safe_path(basedir, path, follow_symlinks=True):
     return basedir == os.path.commonpath((basedir, matchpath))
 
 
-def extract_and_validate_zip(zip_file, max_size=30*1024*1024):
+def extract_and_validate_zip(zip_file, max_size=ZIP_MAX_CONTENT_SIZE):
     """
     Securely extract and validate zip file containing exactly ONE .log file
     Returns: tuple (filename, content) for the log file
@@ -465,6 +466,18 @@ def upload_file():
             'message': 'You have already uploaded this file' if is_duplicate else 'File uploaded successfully',
             'server_time': total_time
         })
+
+
+@app.errorhandler(413)
+def handle_file_too_large(e):
+    """Return a JSON error instead of Werkzeug's default HTML page when an
+    upload exceeds MAX_CONTENT_LENGTH, so the frontend's response.json() call
+    doesn't fail trying to parse HTML."""
+    max_mb = app.config['MAX_CONTENT_LENGTH'] / 1024 / 1024
+    zip_max_mb = ZIP_MAX_CONTENT_SIZE / 1024 / 1024
+    return jsonify({'error': f'File too large. Maximum upload size is {max_mb:.0f}MB. '
+                              f'For larger log files, zip them first — zipped uploads support '
+                              f'up to {zip_max_mb:.0f}MB of uncompressed log content.'}), 413
 
 
 @app.route('/api/files', methods=['GET'])
