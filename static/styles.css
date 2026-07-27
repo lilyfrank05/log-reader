@@ -7,11 +7,10 @@
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: #f5f5f5;
-    padding: 20px;
+    padding: clamp(12px, 2vw, 32px);
 }
 
 .container {
-    max-width: 1400px;
     margin: 0 auto;
     background: white;
     border-radius: 8px;
@@ -430,6 +429,7 @@ h1 {
  * number of fields (e.g. only the main column has Time/Line Window rows).
  */
 .workspace-grid {
+    --grid-pad: clamp(16px, 2vw, 32px);
     display: grid;
     grid-template-columns: 1fr;
     grid-template-rows:
@@ -449,20 +449,19 @@ h1 {
         [logscontainer] auto
         [end];
     column-gap: 0;
-    padding: 20px;
+    padding: var(--grid-pad);
     position: relative;
 }
-
 .workspace-grid.context-open {
-grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
 }
 
 .workspace-grid.context-open .col-main {
-    padding-right: 20px;
+    padding-right: calc(var(--grid-pad) * 0.75);
 }
 
 .workspace-grid.context-open .col-context {
-    padding-left: 20px;
+    padding-left: calc(var(--grid-pad) * 0.75);
 }
 
 .col-main {
@@ -508,8 +507,8 @@ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-row: title / end;
     background: #fafafa;
     border-left: 1px solid #e0e0e0;
-    margin: -20px -20px -20px 0;
-    padding-right: 20px;
+    margin: calc(-1 * var(--grid-pad)) calc(-1 * var(--grid-pad)) calc(-1 * var(--grid-pad)) 0;
+    padding-right: var(--grid-pad);
 }
 
 .context-panel .log-line {
@@ -542,6 +541,13 @@ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 .context-panel-close:hover {
     background: #ecf0f1;
     color: #2c3e50;
+}
+
+/* On medium screens, context panels get equal share */
+@media (max-width: 1100px) {
+    .workspace-grid.context-open {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
 }
 
 @media (max-width: 700px) {

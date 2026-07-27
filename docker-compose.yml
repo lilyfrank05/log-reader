@@ -24,6 +24,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production}
       - REDIS_URL=redis://redis:6379/0
     volumes:
+      - ./static:/app/static:ro
       - ./uploads:/app/uploads
       - ./presets.json:/app/presets.json:ro
     depends_on:
