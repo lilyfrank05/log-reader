@@ -1128,6 +1128,14 @@ async function applyContextPanelFilters(skipSave = false) {
 
         if (ok) {
             renderContextLogs(data.lines, data.total, data.start_time, data.end_time, data.truncated, data.max_results);
+
+            // Scroll to the selected log line (show it at the top of the context panel)
+            if (selectedLineNumber != null) {
+                const targetLine = document.querySelector(`#contextLogsContainer .log-line[data-line-number="${selectedLineNumber}"]`);
+                if (targetLine) {
+                    targetLine.scrollIntoView({ block: 'start', behavior: 'instant' });
+                }
+            }
         } else {
             contextLogsContainer.innerHTML = `<div class="message error">${data.error || 'Failed to load logs'}</div>`;
         }
@@ -1157,7 +1165,7 @@ function renderContextLogs(lines, total, startTime, endTime, truncated, maxResul
     }
 
     logsContainer.innerHTML = warningHtml + lines.map(line =>
-        `<div class="log-line">
+        `<div class="log-line" data-line-number="${line.line_number}">
             <span class="line-number">${line.line_number}</span>
             <span class="line-content">${escapeHtml(line.content)}</span>
         </div>`
