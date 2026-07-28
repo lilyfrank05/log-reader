@@ -25,7 +25,6 @@ The easiest way to run the application is using Docker:
 
 ```bash
 # Set environment variables
-export GITHUB_REPOSITORY=yourusername/log-reader
 export VERSION=latest
 export SECRET_KEY=your-secure-secret-key
 
@@ -36,8 +35,8 @@ docker-compose up -d
 Or manually:
 
 ```bash
-docker pull ghcr.io/yourusername/log-reader:latest
-docker run -d -p 5001:5001 -e SECRET_KEY=your-secret-key ghcr.io/yourusername/log-reader:latest
+docker pull ghcr.io/lilyfrank05/log-reader:latest
+docker run -d -p 5001:5001 -e SECRET_KEY=your-secret-key ghcr.io/lilyfrank05/log-reader:latest
 ```
 
 Then open your browser and navigate to:
@@ -96,9 +95,9 @@ To use automated builds:
 
 ### Local Testing Options
 
-#### Option 1: Using Docker Compose (Recommended)
+#### Option 1: Using Docker Compose
 
-The easiest way to test locally with Redis:
+Runs the same prebuilt image/gunicorn setup as production. Good for a quick end-to-end check, but code changes require rebuilding — not ideal for active development.
 
 ```bash
 # Start both Redis and the application
@@ -113,7 +112,7 @@ docker-compose down
 
 Access the application at `http://localhost:5001`
 
-#### Option 2: Local Development Setup
+#### Option 2: Local Development Setup (Recommended)
 
 For development with hot-reload:
 
@@ -129,7 +128,7 @@ sudo apt-get install redis-server
 sudo systemctl start redis
 
 # Or use Docker for just Redis
-docker run -d -p 6379:6379 redis:7-alpine
+docker run -d --rm --name dev-redis -p 6379:6379 redis:7-alpine
 ```
 
 **Step 2: Set Up Python Environment**
@@ -308,7 +307,7 @@ Presets are loaded fresh each time you reload the page. To update presets:
   - Hourly cleanup of unreferenced files
 - **File Deduplication**: SHA-256 hash-based with reference counting
 
-## Development
+## Tech Stack
 
 The application uses:
 - **Backend**: Flask (Python)
