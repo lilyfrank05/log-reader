@@ -44,19 +44,11 @@ Then open your browser and navigate to:
 http://localhost:5001
 ```
 
-### Uploads Folder Permissions (docker-compose)
+### Uploads Storage (docker-compose)
 
-The container runs as a non-root user with UID/GID `1000` and bind-mounts `./uploads` from the same directory as `docker-compose.yml`. Make sure that local folder is writable by that user before starting:
+Uploads live in the named volume `uploads:` mounted at `/app/uploads`. Docker initializes it from the image directory (owned by the container's non-root user `appuser`), so it is writable with no host setup and survives `docker compose down`.
 
-```bash
-mkdir -p uploads
-# Prefer matching the container user
-sudo chown -R 1000:1000 uploads
-# If you can't change ownership, loosen permissions instead
-chmod -R 775 uploads
-```
-
-On Linux with SELinux you may also need to add `:z` to the volume entry (`- ./uploads:/app/uploads:z`).
+Static files (`static/`) are baked into the image and need no host mount. `presets.json` is bind-mounted read-only for live preset edits; the image also ships a copy, so the app works even without the mount.
 
 ## Docker Deployment
 

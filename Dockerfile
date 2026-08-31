@@ -29,6 +29,7 @@ COPY --chown=appuser:appuser filters.py .
 COPY --chown=appuser:appuser cleanup.py .
 COPY --chown=appuser:appuser static/ static/
 COPY --chown=appuser:appuser VERSION .
+COPY --chown=appuser:appuser presets.json .
 
 # Set environment variables
 ENV PATH=/home/appuser/.local/bin:$PATH \
