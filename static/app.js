@@ -353,14 +353,26 @@ function renderFiles() {
             midTidText = `<span class="file-mid-tid">${parts.join(', ')}</span>`;
         }
 
+        // A label (case alias) becomes the primary name; original filename moves below
+        let nameHtml;
+        if (file.label) {
+            nameHtml = `<span class="file-name">${escapeHtml(file.label)}</span>
+                    <span class="file-sub-name">${escapeHtml(file.original_name)}</span>`;
+        } else {
+            nameHtml = `<span class="file-name">${escapeHtml(file.original_name)}</span>`;
+        }
+
         return `
             <div class="file-item ${file.id === currentFileId ? 'active' : ''}"
                  onclick="selectFile('${file.id}')">
                 <div class="file-info">
-                    <span class="file-name">${file.original_name}</span>
+                    ${nameHtml}
                     ${midTidText}
                 </div>
-                <button class="delete-btn" onclick="deleteFile(event, '${file.id}')">Delete</button>
+                <div class="file-actions">
+                    <button class="label-btn" onclick="labelFile(event, '${file.id}')" title="Set case label">Label</button>
+                    <button class="delete-btn" onclick="deleteFile(event, '${file.id}')">Delete</button>
+                </div>
             </div>
         `;
     }).join('');
@@ -463,6 +475,34 @@ async function deleteFile(event, fileId) {
         }
     } catch (error) {
         alert('Failed to delete file: ' + error.message);
+    }
+}
+
+// Set a case label (alias) for a file
+async function labelFile(event, fileId) {
+    event.stopPropagation();
+
+    const file = currentFiles.find(f => f.id === fileId);
+    if (!file) return;
+
+    const label = prompt('Case label for this file (alias to pin it to a case):', file.label || '');
+    if (label === null) return;  // cancelled
+
+    try {
+        const response = await fetch(`/api/files/${fileId}/label`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: label })
+        });
+
+        if (response.ok) {
+            loadFiles();
+        } else {
+            const data = await response.json();
+            alert(data.error || 'Failed to set label');
+        }
+    } catch (error) {
+        alert('Failed to set label: ' + error.message);
     }
 }
 
