@@ -15,7 +15,8 @@ A web service for reading and filtering `.log` files with memory-efficient strea
 - **File Management**:
   - Upload multiple files and switch between them
   - Delete files manually
-  - Automatic daily cleanup of files older than 24 hours at 2 AM
+  - Label files with a case alias to pin them to a case you work on
+  - Automatic daily cleanup of files older than the retention period (default 7 days, configurable) at 2 AM
 - **Exception Handling**: Gracefully handles logs without timestamps
 - **Production Ready**: Docker support with multi-architecture builds
 
@@ -140,6 +141,7 @@ pip install -r requirements.txt
 # Set environment variables
 export REDIS_URL=redis://localhost:6379/0
 export SECRET_KEY=dev-secret-key
+export FILE_RETENTION_DAYS=7   # optional: days to keep uploaded files (defaults to 7)
 
 # Run the app
 python app.py
@@ -162,6 +164,7 @@ To test the multi-worker setup locally:
 # Use gunicorn directly (simulates production)
 source .venv/bin/activate
 export REDIS_URL=redis://localhost:6379/0
+export FILE_RETENTION_DAYS=7   # optional: days to keep uploaded files (defaults to 7)
 
 gunicorn --bind 0.0.0.0:5001 --workers 4 --threads 4 --timeout 120 app:app
 ```
@@ -190,6 +193,17 @@ Response: { "files": [...] }
 DELETE /api/files/<file_id>
 
 Response: { "success": true }
+```
+
+### Label File
+Sets a case alias for a file reference (shown as the file's name in the UI).
+```
+PUT /api/files/<file_id>/label
+Content-Type: application/json
+
+Body: { "label": "Case #1234" }   // empty string clears the label
+
+Response: { "file": {...} }
 ```
 
 ### Get Filtered Logs
@@ -287,6 +301,12 @@ Presets are loaded fresh each time you reload the page. To update presets:
   - Docker compose: `redis://redis:6379/0` (uses internal network)
   - Required for multi-worker deployments
 
+- **FILE_RETENTION_DAYS**: How many days an uploaded file is kept before the daily 2 AM cleanup deletes it
+  - Default: `7`
+  - Docker compose: `docker-compose.yml` passes `${FILE_RETENTION_DAYS:-7}` to the container; set it in your shell or compose `.env` before `docker compose up`
+  - Local Flask run: `export FILE_RETENTION_DAYS=14` before starting the app (see "Local Development Setup" below)
+  - Invalid or missing values fall back to the 7-day default
+
 ### Application Settings
 
 - **Upload Folder**: `uploads/` (created automatically, persisted in Docker volume)
@@ -295,7 +315,7 @@ Presets are loaded fresh each time you reload the page. To update presets:
 - **Workers**: 4 workers × 4 threads = 16 concurrent requests
 - **Session Backend**: Redis (enables multi-worker session sharing)
 - **Cleanup Schedule**:
-  - Daily full cleanup at 2:00 AM (deletes all files)
+  - Daily retention cleanup at 2:00 AM (deletes files older than `FILE_RETENTION_DAYS`, default 7)
   - Hourly cleanup of unreferenced files
 - **File Deduplication**: SHA-256 hash-based with reference counting
 

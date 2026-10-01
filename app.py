@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Import custom modules
 from utils import read_last_lines, parse_timestamp
 from filters import stream_filtered_logs
-from cleanup import cleanup_old_files, daily_full_cleanup
+from cleanup import cleanup_old_files, daily_retention_cleanup
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='static')
@@ -132,6 +132,18 @@ def remove_file_from_session(session_id, file_id):
         hash_set_key = f"files:session:{session_id}:hashes"
         redis_client.srem(hash_set_key, file_hash)
     return files
+
+
+def update_file_label(session_id, file_id, label):
+    """Set the label (case alias) for a file reference; returns updated file or None"""
+    files = get_user_files(session_id)
+    for f in files:
+        if f['id'] == file_id:
+            f['label'] = label
+            key = get_session_files_key(session_id)
+            redis_client.set(key, json.dumps(files))
+            return f
+    return None
 
 
 def get_file_hash_mapping(file_hash):
@@ -391,7 +403,8 @@ def process_log_file(session_id, filename, file_stream, upload_start):
         'hash': file_hash,
         'upload_time': datetime.now().isoformat(),
         'mid': mid_tid['mid'],
-        'tid': mid_tid['tid']
+        'tid': mid_tid['tid'],
+        'label': None  # optional case alias set by the user
     }
     add_file_to_session(session_id, file_info)
     redis_time = time.time() - redis_start
@@ -609,6 +622,29 @@ def delete_file(file_id):
             return jsonify({'error': f'Failed to delete file: {str(e)}'}), 500
 
     return jsonify({'success': True})
+
+
+@app.route('/api/files/<file_id>/label', methods=['PUT'])
+def set_file_label(file_id):
+    """Set a case label (alias) for one of this session's file references"""
+    session_id = get_session_id()
+    data = request.get_json(silent=True) or {}
+    label = data.get('label', '')
+
+    if not isinstance(label, str):
+        return jsonify({'error': 'label must be a string'}), 400
+    label = label.strip()
+    if len(label) > 200:
+        return jsonify({'error': 'label must be 200 characters or fewer'}), 400
+    if not label:
+        label = None
+
+    updated_file = update_file_label(session_id, file_id, label)
+    if not updated_file:
+        return jsonify({'error': 'File not found'}), 404
+
+    logger.info(f"[LABEL] Session: {session_id[:8]}... | File: {file_id[:8]}... | Label: {label}")
+    return jsonify({'file': updated_file})
 
 
 @app.route('/api/files/<file_id>/time-range', methods=['GET'])
@@ -883,9 +919,9 @@ def _renew_scheduler_leadership():
 scheduler = BackgroundScheduler()
 
 if _try_become_scheduler_leader():
-    # Daily full cleanup at 2 AM
+    # Daily retention cleanup at 2 AM (files older than FILE_RETENTION_DAYS)
     scheduler.add_job(
-        func=lambda: daily_full_cleanup(app.config['UPLOAD_FOLDER'], redis_client),
+        func=lambda: daily_retention_cleanup(app.config['UPLOAD_FOLDER'], redis_client),
         trigger='cron',
         hour=2,
         minute=0
