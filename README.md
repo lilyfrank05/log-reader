@@ -181,6 +181,8 @@ Content-Type: multipart/form-data
 Response: { "success": true, "file": {...} }
 ```
 
+For zip uploads, `file.original_name` is the extracted log filename and `file.archive_name` is the name of the uploaded zip ("before unzip"); both are shown in the file list. Direct `.log`/`.log_1` uploads have `archive_name: null`.
+
 ### List Files
 ```
 GET /api/files

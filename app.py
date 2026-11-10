@@ -343,8 +343,13 @@ def index():
     return send_from_directory('static', 'index.html')
 
 
-def process_log_file(session_id, filename, file_stream, upload_start):
-    """Process a single .log file (extracted from zip or uploaded directly)"""
+def process_log_file(session_id, filename, file_stream, upload_start, source_archive_name=None):
+    """Process a single .log file (extracted from zip or uploaded directly).
+
+    source_archive_name: for zip uploads, the name of the zip file the log was
+    extracted from; displayed alongside the extracted filename. Direct .log
+    uploads leave it None.
+    """
     # Calculate file hash to check for duplicates
     hash_start = time.time()
     file_hash = calculate_file_hash(file_stream)
@@ -404,7 +409,8 @@ def process_log_file(session_id, filename, file_stream, upload_start):
         'upload_time': datetime.now().isoformat(),
         'mid': mid_tid['mid'],
         'tid': mid_tid['tid'],
-        'label': None  # optional case alias set by the user
+        'label': None,  # optional case alias set by the user
+        'archive_name': source_archive_name  # zip file name if extracted from one, else None
     }
     add_file_to_session(session_id, file_info)
     redis_time = time.time() - redis_start
@@ -455,8 +461,10 @@ def upload_file():
             # Create a BytesIO object from the extracted content
             log_stream = BytesIO(log_content)
 
-            # Process the extracted log file (hash is calculated on .log content, not .zip)
-            file_info, is_duplicate = process_log_file(session_id, log_filename, log_stream, upload_start)
+            # Process the extracted log file (hash is calculated on .log content, not .zip);
+            # keep the original zip filename (pre-sanitization) so the UI can show both names
+            file_info, is_duplicate = process_log_file(session_id, log_filename, log_stream,
+                                                       upload_start, source_archive_name=file.filename)
 
             total_time = time.time() - upload_start
             logger.info(f"[ZIP COMPLETE] Session: {session_id[:8]}... | Extracted: {log_filename} | Total: {total_time:.2f}s")

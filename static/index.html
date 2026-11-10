@@ -137,6 +137,7 @@
             <div class="col-main row-logsheader logs-header">
                 <h3>Log Content</h3>
                 <span class="log-count" id="logCount">No logs loaded</span>
+                <button class="copy-btn" id="copyLogsBtn" onclick="copyLogs()" disabled>Copy</button>
             </div>
 
             <div id="timeRange" class="col-main row-timerangedisplay"></div>
@@ -214,6 +215,7 @@
                 <div class="col-context row-logsheader logs-header">
                     <h3>Context Log Content</h3>
                     <span class="log-count" id="contextLogCount">No logs loaded</span>
+                    <button class="copy-btn" id="copyContextLogsBtn" onclick="copyContextLogs()" disabled>Copy</button>
                 </div>
 
                 <div id="contextTimeRange" class="col-context row-timerangedisplay"></div>
