@@ -353,13 +353,17 @@ function renderFiles() {
             midTidText = `<span class="file-mid-tid">${parts.join(', ')}</span>`;
         }
 
-        // A label (case alias) becomes the primary name; original filename moves below
+        // A label (case alias) becomes the primary name; original filename moves below.
+        // Zip uploads also show the archive they were extracted from ("before unzip")
         let nameHtml;
         if (file.label) {
             nameHtml = `<span class="file-name">${escapeHtml(file.label)}</span>
                     <span class="file-sub-name">${escapeHtml(file.original_name)}</span>`;
         } else {
             nameHtml = `<span class="file-name">${escapeHtml(file.original_name)}</span>`;
+        }
+        if (file.archive_name && file.archive_name !== file.original_name) {
+            nameHtml += `<span class="file-sub-name">zip: ${escapeHtml(file.archive_name)}</span>`;
         }
 
         return `
@@ -468,6 +472,11 @@ async function deleteFile(event, fileId) {
                     '<div class="message info">Select a file to view logs</div>';
                 document.getElementById('logCount').textContent = 'No logs loaded';
                 closeContextPanel();
+                // No logs on screen anymore - keep Copy from grabbing stale results
+                displayedLogLines = [];
+                document.getElementById('copyLogsBtn').disabled = true;
+                displayedContextLogLines = [];
+                document.getElementById('copyContextLogsBtn').disabled = true;
             }
             loadFiles();
         } else {
@@ -745,6 +754,9 @@ async function applyFilters(skipSave = false) {
 
     const logsContainer = document.getElementById('logsContainer');
     logsContainer.innerHTML = '<div class="loading">Loading logs...</div>';
+    // Don't let Copy grab the previous file's/filters' lines while loading
+    displayedLogLines = [];
+    document.getElementById('copyLogsBtn').disabled = true;
 
     const filterData = {
         include: includeFilters,
@@ -779,11 +791,76 @@ async function applyFilters(skipSave = false) {
     }
 }
 
+// Lines currently rendered in the main log view / context panel. The copy
+// buttons read these arrays, so they copy exactly what the user sees
+// (truncation included) and never stale results during a reload.
+let displayedLogLines = [];
+let displayedContextLogLines = [];
+
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch (error) {
+            // writeText denied (e.g. browser permissions) - fall back below
+        }
+    }
+    // Fallback for non-secure contexts and denied Clipboard API permission
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    let ok = false;
+    try {
+        ok = document.execCommand('copy');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+    if (!ok) {
+        throw new Error('Clipboard access denied by browser');
+    }
+}
+
+function showCopiedFeedback(button) {
+    button.textContent = 'Copied!';
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+        button.textContent = 'Copy';
+    }, 1500);
+}
+
+async function copyLogs() {
+    if (displayedLogLines.length === 0) return;
+    try {
+        await copyTextToClipboard(displayedLogLines.map(line => line.content).join('\n'));
+        showCopiedFeedback(document.getElementById('copyLogsBtn'));
+    } catch (error) {
+        showMessage(document.getElementById('uploadMessage'), 'Failed to copy logs: ' + error.message, 'error');
+    }
+}
+
+async function copyContextLogs() {
+    if (displayedContextLogLines.length === 0) return;
+    try {
+        await copyTextToClipboard(displayedContextLogLines.map(line => line.content).join('\n'));
+        showCopiedFeedback(document.getElementById('copyContextLogsBtn'));
+    } catch (error) {
+        showMessage(document.getElementById('uploadMessage'), 'Failed to copy logs: ' + error.message, 'error');
+    }
+}
+
 // Render logs
 function renderLogs(lines, total, startTime, endTime, truncated, maxResults) {
     const logsContainer = document.getElementById('logsContainer');
     const logCount = document.getElementById('logCount');
     const timeRange = document.getElementById('timeRange');
+
+    // Exact copy target: what's on screen right now (truncation included)
+    displayedLogLines = lines;
+    document.getElementById('copyLogsBtn').disabled = lines.length === 0;
 
     if (lines.length === 0) {
         logsContainer.innerHTML = '<div class="message info">No logs match the current filters</div>';
@@ -1145,6 +1222,9 @@ async function applyContextPanelFilters(skipSave = false) {
 
     const contextLogsContainer = document.getElementById('contextLogsContainer');
     contextLogsContainer.innerHTML = '<div class="loading">Loading logs...</div>';
+    // Don't let Copy grab the previous filtered result while loading
+    displayedContextLogLines = [];
+    document.getElementById('copyContextLogsBtn').disabled = true;
 
     const filterData = {
         include: contextIncludeFilters,
@@ -1189,6 +1269,10 @@ function renderContextLogs(lines, total, startTime, endTime, truncated, maxResul
     const logsContainer = document.getElementById('contextLogsContainer');
     const logCount = document.getElementById('contextLogCount');
     const timeRange = document.getElementById('contextTimeRange');
+
+    // Exact copy target: what's on screen right now (truncation included)
+    displayedContextLogLines = lines;
+    document.getElementById('copyContextLogsBtn').disabled = lines.length === 0;
 
     if (lines.length === 0) {
         logsContainer.innerHTML = '<div class="message info">No logs match the current filters</div>';

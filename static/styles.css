@@ -618,7 +618,7 @@ h1 {
 
 .logs-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     margin-bottom: 15px;
 }
@@ -626,6 +626,28 @@ h1 {
 .log-count {
     color: #7f8c8d;
     font-size: 14px;
+    margin-left: auto;
+}
+
+.copy-btn {
+    background: #3498db;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 10px;
+}
+
+.copy-btn:hover:not(:disabled) {
+    background: #2980b9;
+    color: white;
+}
+
+.copy-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .time-range {
