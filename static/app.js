@@ -1014,16 +1014,41 @@ const contextEndDateInput = document.getElementById('contextEndDate');
 const contextStartDateDisplay = document.getElementById('contextStartDateDisplay');
 const contextEndDateDisplay = document.getElementById('contextEndDateDisplay');
 const contextPanel = document.getElementById('contextPanel');
+const contextExpandBtn = document.getElementById('contextExpandBtn');
 const logsArea = document.getElementById('logsArea');
 
 function openContextPanel() {
     contextPanel.classList.add('open');
     logsArea.classList.add('context-open');
+    const expanded = sessionStorage.getItem('contextPanelExpanded') === '1';
+    contextPanel.classList.toggle('expanded', expanded);
+    logsArea.classList.toggle('context-expanded', expanded);
+    updateContextExpandButton(expanded);
 }
 
 function closeContextPanel() {
-    contextPanel.classList.remove('open');
-    logsArea.classList.remove('context-open');
+    contextPanel.classList.remove('open', 'expanded');
+    logsArea.classList.remove('context-open', 'context-expanded');
+}
+
+// Toggle the context panel between side-by-side and full width (remembered
+// for the session so re-opening the panel keeps the chosen width)
+function toggleContextExpand() {
+    const expanded = !contextPanel.classList.contains('expanded');
+    contextPanel.classList.toggle('expanded', expanded);
+    logsArea.classList.toggle('context-expanded', expanded);
+    try {
+        sessionStorage.setItem('contextPanelExpanded', expanded ? '1' : '0');
+    } catch (e) {
+        console.error('Failed to save context panel width to sessionStorage:', e);
+    }
+    updateContextExpandButton(expanded);
+}
+
+function updateContextExpandButton(expanded) {
+    contextExpandBtn.textContent = expanded ? '\u2921' : '\u2922';
+    contextExpandBtn.title = expanded ? 'Collapse panel to side' : 'Expand panel to full width';
+    contextExpandBtn.setAttribute('aria-label', expanded ? 'Collapse context panel' : 'Expand context panel to full width');
 }
 
 // Load this file's remembered context filters into the panel (empty if none yet)

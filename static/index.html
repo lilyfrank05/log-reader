@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log File Viewer</title>
-<link rel="stylesheet" href="/static/styles.css?v=1.5.5">
+<link rel="stylesheet" href="/static/styles.css?v=1.5.6">
 </head>
 <body>
     <div class="container">
@@ -151,7 +151,10 @@
 
                 <div class="col-context row-title context-panel-header">
                     <h3>Context</h3>
-                    <button class="context-panel-close" onclick="closeContextPanel()" aria-label="Close context panel">&times;</button>
+                    <div class="context-panel-header-actions">
+                        <button class="context-panel-expand" id="contextExpandBtn" onclick="toggleContextExpand()" aria-label="Expand context panel to full width">&#x2922;</button>
+                        <button class="context-panel-close" onclick="closeContextPanel()" aria-label="Close context panel">&times;</button>
+                    </div>
                 </div>
 
                 <div class="filter-group col-context row-preset">
@@ -227,6 +230,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=1.5.5"></script>
+    <script src="/static/app.js?v=1.5.6"></script>
 </body>
 </html>
