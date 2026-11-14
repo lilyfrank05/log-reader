@@ -558,10 +558,16 @@ h1 {
     margin-bottom: 15px;
 }
 
+.context-panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.context-panel-expand,
 .context-panel-close {
     background: none;
     border: none;
-    font-size: 22px;
     line-height: 1;
     cursor: pointer;
     color: #7f8c8d;
@@ -570,6 +576,15 @@ h1 {
     transition: background 0.2s, color 0.2s;
 }
 
+.context-panel-expand {
+    font-size: 15px;
+}
+
+.context-panel-close {
+    font-size: 22px;
+}
+
+.context-panel-expand:hover,
 .context-panel-close:hover {
     background: #ecf0f1;
     color: #2c3e50;
@@ -613,6 +628,36 @@ h1 {
         margin-top: 20px;
         padding-top: 20px;
         border-top: 1px solid #e0e0e0;
+    }
+}
+
+/* Expanded: the context panel spans the full content width (same as the main
+   log pane) instead of sitting beside it. The shared row tracks keep every
+   context field on the same vertical line as the side-by-side layout. */
+.workspace-grid.context-expanded {
+    grid-template-columns: 1fr;
+}
+
+.workspace-grid.context-expanded .col-main {
+    display: none;
+}
+
+.workspace-grid.context-expanded .col-context {
+    grid-column: 1;
+    padding-left: 0;
+}
+
+.workspace-grid.context-expanded .context-panel-bg {
+    grid-column: 1;
+    border-left: none;
+    margin: calc(-1 * var(--grid-pad));
+}
+
+@media (max-width: 700px) {
+    /* The stacked layout is already full width below the breakpoint, so the
+       expand toggle changes nothing visually and the background stays hidden */
+    .workspace-grid.context-expanded .context-panel-bg {
+        display: none;
     }
 }
 
